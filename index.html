@@ -1421,6 +1421,72 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  // Existing preview buttons remain previews; never misrepresent them as broadcasting.
  db?.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')disconnect();setTimeout(refreshRole,0);});
  refreshRole();
+   // Private LIVE music deck: uses the existing approved catalog and LiveKit room.
+  const deck=document.createElement('div');
+  deck.className='panel';
+  deck.hidden=true;
+  deck.innerHTML='<h2>🎵 LIVE DJ Music</h2><p class="muted">Only approved catalog songs. Music is sent to the same LIVE room as your microphone.</p><select id="swrLiveMusicPick"><option value="">Choose approved song</option></select><div class="row"><button id="swrLiveMusicRefresh">Refresh songs</button><button id="swrLiveMusicPlay" class="primary">▶ Broadcast song</button><button id="swrLiveMusicPause">⏸ Pause</button><button id="swrLiveMusicStop">■ Stop song</button></div><p id="swrLiveMusicStatus" class="muted" role="status">Start your real broadcast first.</p>';
+  box.append(deck);
+  const musicAudio=new Audio();
+  musicAudio.crossOrigin='anonymous';
+  musicAudio.preload='none';
+  let musicContext=null,musicSource=null,musicDestination=null,musicPublished=null;
+  let approvedMusic=[];
+  const musicStatus=$('swrLiveMusicStatus');
+  function loadApprovedMusic(){
+    // The shared 'tracks' array is populated from the station's approved catalog.
+    approvedMusic=(typeof tracks!=='undefined'?tracks:[])
+      .filter(t=>t&&t.id&&t.url&&t.title&&t.artist&&t.source!=='local');
+    const picker=$('swrLiveMusicPick');
+    picker.replaceChildren(new Option('Choose approved song',''));
+    approvedMusic.forEach((t,i)=>picker.add(new Option(t.artist+' — '+t.title,String(i))));
+    musicStatus.textContent=approvedMusic.length+' approved catalog song(s) available.';
+  }
+  async function stopLiveMusic(){
+    musicAudio.pause();musicAudio.removeAttribute('src');musicAudio.load();
+    if(musicPublished&&room){
+      try{await room.localParticipant.unpublishTrack(musicPublished);}catch(e){console.warn(e);}
+    }
+    musicPublished=null;
+    musicStatus.textContent='Song stopped. Microphone remains live.';
+  }
+  async function playLiveMusic(){
+    try{
+      if(!host||!room)throw Error('Start your real LIVE broadcast first.');
+      const choice=$('swrLiveMusicPick').value;
+      if(choice==='')throw Error('Choose an approved song first.');
+      const t=approvedMusic[Number(choice)];
+      if(!t?.url)throw Error('Song is unavailable. Refresh songs.');
+      if(!musicContext){
+        musicContext=new (window.AudioContext||window.webkitAudioContext)();
+        musicSource=musicContext.createMediaElementSource(musicAudio);
+        musicDestination=musicContext.createMediaStreamDestination();
+        musicSource.connect(musicDestination); // Broadcast only; do not echo to DJ speakers.
+      }
+      await musicContext.resume();
+      if(!musicPublished){
+        const track=musicDestination.stream.getAudioTracks()[0];
+        musicPublished=await room.localParticipant.publishTrack(track,{name:'dj-music',source:window.LivekitClient.Track.Source.Unknown});
+      }
+      musicAudio.src=t.url;
+      await musicAudio.play();
+      musicStatus.textContent='🔴 Broadcasting: '+t.artist+' — '+t.title;
+    }catch(e){musicStatus.textContent='Music error: '+e.message;}
+  }
+  $('swrLiveMusicRefresh').onclick=loadApprovedMusic;
+  $('swrLiveMusicPlay').onclick=playLiveMusic;
+  $('swrLiveMusicPause').onclick=()=>{
+    if(musicAudio.paused){musicAudio.play().catch(e=>musicStatus.textContent=e.message);}
+    else musicAudio.pause();
+  };
+  $('swrLiveMusicStop').onclick=stopLiveMusic;
+  musicAudio.onended=()=>{musicStatus.textContent='Song ended. Select the next approved song.';};
+  const oldUi=ui;
+  ui=function(){oldUi();deck.hidden=!host;};
+  const oldDisconnect=disconnect;
+  disconnect=async function(...args){await stopLiveMusic();return oldDisconnect(...args);};
+  loadApprovedMusic();
+
 })();
 </script>
 </body></html>
