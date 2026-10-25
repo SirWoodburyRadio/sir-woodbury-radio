@@ -46,7 +46,7 @@
 #voteArtistsPage #voteTopPanel,#voteArtistsPage #voteOtherPanel{scroll-margin-top:155px}
 @media(max-width:440px){#voteArtistsPage .vote-switch button{font-size:14px;padding:12px 5px}}
 </style>
-<style id="swr-live-voting-only-on-live-tab">#radio #radioLiveVote{display:none!important}</style><style id="swr-auth-wall-css">html:not(.swr-authenticated) nav button:not([data-tab="account"]),html:not(.swr-authenticated) main section:not(#account){display:none!important}html:not(.swr-authenticated) nav button[data-tab="account"]{display:inline-block!important}#swr-auth-welcome{padding:18px;border:1px solid #8e353c;border-radius:14px;background:#281b20;margin:16px 0}html.swr-authenticated #swr-auth-welcome{display:none!important}</style></head><body><header><div class="logo"><div class="mark">BW</div><div><div class="brand">SIR WOODBURY RADIO</div><div class="sub">INDEPENDENT MUSIC • NO BOUNDARIES</div></div></div><div class="top-tools"><span class="pill">STUDIO FOUR</span><div id="liveCountdown" class="countdown">📻 NEXT LIVE: NOT SCHEDULED</div></div></header><nav><button data-tab="home" class="active">🏠 Main</button><button data-tab="radio">📻 Radio</button><button data-tab="discover">🎵 Discover</button><button data-tab="live">🔴 LIVE</button><button data-tab="studio">🎙️ My Studio</button><button data-tab="submit">📤 Submit Music</button><button data-tab="charts">🏆 Vote / Top 20</button><button data-tab="account">👤 Account</button><button data-tab="admin">🛡️ Review</button></nav><main><section id="home" class="active">
+<style id="swr-live-voting-only-on-live-tab">#radio #radioLiveVote{display:none!important}</style><style id="swr-auth-wall-css">html:not(.swr-authenticated) nav button:not([data-tab="account"]),html:not(.swr-authenticated) main section:not(#account){display:none!important}html:not(.swr-authenticated) nav button[data-tab="account"]{display:inline-block!important}#swr-auth-welcome{padding:18px;border:1px solid #8e353c;border-radius:14px;background:#281b20;margin:16px 0}html.swr-authenticated #swr-auth-welcome{display:none!important}</style><style id="swr-listener-live-only-nav">html.swr-listener-live-only nav button:not([data-tab="live"]){display:none!important}html.swr-listener-live-only nav{justify-content:center}html.swr-listener-live-only nav button[data-tab="live"]{display:inline-block!important}</style></head><body><header><div class="logo"><div class="mark">BW</div><div><div class="brand">SIR WOODBURY RADIO</div><div class="sub">INDEPENDENT MUSIC • NO BOUNDARIES</div></div></div><div class="top-tools"><span class="pill">STUDIO FOUR</span><div id="liveCountdown" class="countdown">📻 NEXT LIVE: NOT SCHEDULED</div></div></header><nav><button data-tab="home" class="active">🏠 Main</button><button data-tab="radio">📻 Radio</button><button data-tab="discover">🎵 Discover</button><button data-tab="live">🔴 LIVE</button><button data-tab="studio">🎙️ My Studio</button><button data-tab="submit">📤 Submit Music</button><button data-tab="charts">🏆 Vote / Top 20</button><button data-tab="account">👤 Account</button><button data-tab="admin">🛡️ Review</button></nav><main><section id="home" class="active">
 <div class="hero"><div class="eyebrow">SIR WOODBURY RADIO • THIS WEEK</div>
 <h1>Your Top 20<br>Votes This Week</h1>
 <p>Will they still be here next week? <strong>Your vote changes everything.</strong></p>
@@ -1397,7 +1397,27 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  // Live broadcast takes over the listener interface, but never locks out the owner.
  const liveNavGuard=e=>{if(!broadcastDetected||host)return;const b=e.target.closest('nav button,[data-go]');if(b && (b.dataset.tab||b.dataset.go)!=='live'){e.preventDefault();e.stopImmediatePropagation();switchTab('live');}};
  document.addEventListener('click',liveNavGuard,true);
- function updateLiveNav(){document.querySelectorAll('nav button').forEach(b=>{const locked=b.dataset.tab!=='live'&&broadcastDetected&&!host;b.disabled=locked;b.setAttribute('aria-disabled',String(locked));});}
+ // Guard programmatic tab changes too: older page handlers may hold their own
+ // navigation callbacks, and some dynamically created buttons bypass nav guards.
+ const swrUnrestrictedSwitch=switchTab;
+ switchTab=function(id){
+   if(broadcastDetected&&!host&&id!=='live'&&id!=='account')id='live';
+   return swrUnrestrictedSwitch(id);
+ };
+ // Keep the listener's LIVE view in front even if an earlier handler changes
+ // section classes directly. This is presentation only; server access remains RLS.
+ const swrLiveViewObserver=new MutationObserver(()=>{
+   if(!broadcastDetected||host)return;
+   const livePage=$('live');
+   if(!livePage?.classList.contains('active')){
+     document.querySelectorAll('main section.active').forEach(s=>{if(s!==livePage)s.classList.remove('active');});
+     livePage?.classList.add('active');
+   }
+   document.querySelectorAll('nav button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab==='live'));
+ });
+ swrLiveViewObserver.observe(document.querySelector('main'),{subtree:true,attributes:true,attributeFilter:['class']});
+
+ function updateLiveNav(){const listenerLive=broadcastDetected&&!host;document.documentElement.classList.toggle('swr-listener-live-only',listenerLive);document.querySelectorAll('nav button').forEach(b=>{const locked=b.dataset.tab!=='live'&&listenerLive;b.disabled=locked;b.setAttribute('aria-disabled',String(locked));});}
  async function enableSound(){if(!room)return;try{if(room.startAudio)await room.startAudio();const audios=[...$('swrRemoteAudio').querySelectorAll('audio')];for(const a of audios){a.muted=listenerMuted;await a.play();}soundButton.hidden=true;status.textContent='🔴 LIVE NOW — audio enabled.';}catch(e){soundButton.hidden=false;status.textContent='🔴 LIVE connected. Tap ENABLE LIVE SOUND to hear audio.';}}
  soundButton.onclick=enableSound;
 
