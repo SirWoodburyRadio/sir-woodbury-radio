@@ -1386,88 +1386,136 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
 (()=>{
  const $=id=>document.getElementById(id), live=$('live');if(!live)return;
  const box=document.createElement('div');box.id='swrBroadcastBox';
- box.innerHTML=`<h2>📡 LIVE Audio Broadcast</h2><p class="muted">One broadcast: DJ microphone and approved music together.</p>
- <button id="swrBroadcastStart" class="primary" hidden>🎙️ START REAL BROADCAST</button>
- <button id="swrBroadcastStop" hidden>■ END BROADCAST</button>
- <button id="swrMicMute" hidden>🎤 MUTE MIC</button>
- <button id="swrBroadcastListen" class="primary">🔊 LISTEN LIVE</button>
- <button id="swrBroadcastLeave" hidden>Leave LIVE</button>
- <p id="swrBroadcastStatus" class="muted" role="status">Waiting for broadcast.</p><div id="swrRemoteAudio" style="display:none"></div>`;
+ box.innerHTML='<h2>📡 LIVE Audio Broadcast</h2><p class="muted">One combined LIVE stream carries your microphone and approved music to listeners. Video is off.</p><button id="swrBroadcastStart" class="primary" hidden>🎙️ START REAL BROADCAST</button><button id="swrBroadcastStop" hidden>■ STOP BROADCAST</button><button id="swrBroadcastListen" class="primary">🎧 JOIN LIVE AUDIO</button><button id="swrBroadcastLeave" hidden>Leave live audio</button><p id="swrBroadcastStatus" class="muted" role="status">Not connected.</p><button id="swrListenerMute" hidden>🔇 Mute LIVE</button><div id="swrRemoteAudio"></div>';
  live.insertBefore(box,live.firstChild);
- const BASE='https://cfxlqceaenqhmeuocquw.supabase.co',KEY='sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw';
+ const mute=$('swrListenerMute');let listenerMuted=false;mute.onclick=()=>{listenerMuted=!listenerMuted;$('swrRemoteAudio').querySelectorAll('audio').forEach(a=>a.muted=listenerMuted);mute.textContent=listenerMuted?'🔊 Unmute LIVE':'🔇 Mute LIVE';};
+ const status=$('swrBroadcastStatus'), start=$('swrBroadcastStart'),stop=$('swrBroadcastStop'),listen=$('swrBroadcastListen'),leave=$('swrBroadcastLeave');
+ const BASE='https://cfxlqceaenqhmeuocquw.supabase.co', KEY='sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw';
  const db=window.supabase?.createClient(BASE,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
- const status=$('swrBroadcastStatus'),start=$('swrBroadcastStart'),stop=$('swrBroadcastStop'),listen=$('swrBroadcastListen'),leave=$('swrBroadcastLeave'),mute=$('swrMicMute');
- let room=null,host=false,busy=false,micMuted=false,audioContext=null,micStream=null,micGain=null,musicGain=null,mixedDestination=null,mixedPublished=null;
- let presenceChannel=null,remoteAudio=null,livePresent=false,manualLeave=false;
- const musicAudio=new Audio();musicAudio.crossOrigin='anonymous';musicAudio.preload='none';
- let approvedMusic=[];
- const deck=document.createElement('div');deck.className='panel';deck.hidden=true;
- deck.innerHTML=`<h2>🎵 LIVE DJ Music</h2><p class="muted">Approved music mixes with your microphone in one stream.</p>
- <select id="swrLiveMusicPick"><option value="">Choose approved song</option></select>
- <div class="row"><button id="swrLiveMusicRefresh">Refresh songs</button><button id="swrLiveMusicPlay" class="primary">▶ Broadcast song</button><button id="swrLiveMusicPause">⏸ Pause</button><button id="swrLiveMusicStop">■ Stop song</button></div>
- <p id="swrLiveMusicStatus" class="muted">Start broadcast first.</p>`;
- box.append(deck);
- const musicStatus=$('swrLiveMusicStatus');
- function ui(){start.hidden=!host||!!room;stop.hidden=!host||!room;mute.hidden=!host||!room;listen.hidden=!!room||host;leave.hidden=!room||host;deck.hidden=!host;mute.textContent=micMuted?'🎤 UNMUTE MIC':'🎤 MUTE MIC';}
- function showLive(){if(!document.documentElement.classList.contains('swr-authenticated'))return;try{player.pause();}catch(e){};switchTab('live');}
- function setPresence(){if(!presenceChannel)return;presenceChannel.track({on_air:!!(host&&room),updated_at:Date.now()}).catch(()=>{});}
- function presenceChanged(){if(!presenceChannel)return;const states=presenceChannel.presenceState();const active=Object.values(states).flat().some(x=>x.on_air===true);const was=livePresent;livePresent=active;if(active&&!was){showLive();if(!host&&!room&&!manualLeave)connect(false);}if(!active&&was&&!host){status.textContent='Broadcast has ended.';if(room)disconnect('Broadcast has ended.');}}
- async function refreshRole(){try{const {data:{user}}=await db.auth.getUser();if(!user){host=false;ui();return;}const {data,error}=await db.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();if(error)throw error;host=data?.role==='owner'||(data?.role==='admin'&&data?.admin_enabled===true);ui();}catch(e){host=false;ui();status.textContent='Account check: '+e.message;}}
- async function setupPresence(){if(!db||presenceChannel)return;try{const {data:{user}}=await db.auth.getUser();if(!user)return;presenceChannel=db.channel('swr-live-presence-v1',{config:{presence:{key:user.id+'-'+Math.random().toString(36).slice(2)}}});presenceChannel.on('presence',{event:'sync'},presenceChanged).subscribe(async st=>{if(st==='SUBSCRIBED'){await presenceChannel.track({on_air:false,updated_at:Date.now()});presenceChanged();}});}catch(e){console.warn('LIVE presence unavailable',e);}}
- async function cleanupMix(){musicAudio.pause();musicAudio.removeAttribute('src');musicAudio.load();if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}if(audioContext){await audioContext.close().catch(()=>{});audioContext=null;}micGain=null;musicGain=null;mixedDestination=null;mixedPublished=null;micMuted=false;}
- async function disconnect(message='Disconnected from LIVE audio.'){
-  if(host&&room){await presenceChannel?.track({on_air:false,updated_at:Date.now()}).catch(()=>{});}
-  if(room){const old=room;room=null;await old.disconnect().catch(()=>{});}
-  if(remoteAudio){remoteAudio.pause();remoteAudio.srcObject=null;remoteAudio.remove();remoteAudio=null;}
-  $('swrRemoteAudio').replaceChildren();await cleanupMix();status.textContent=message;ui();
+ let room=null, host=false, busy=false;
+ let mixContext=null,mixDestination=null,micStream=null,micSource=null,micGain=null,musicGain=null,mixLimiter=null,mixedPublication=null;
+ async function prepareMixer(){
+   if(mixContext)return;
+   const Ctx=window.AudioContext||window.webkitAudioContext;
+   if(!Ctx)throw Error('This browser does not support audio mixing.');
+   const ctx=new Ctx();
+   try{
+     const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
+     const input=ctx.createMediaStreamSource(stream);
+     const mic=ctx.createGain(), music=ctx.createGain(), limiter=ctx.createDynamicsCompressor(), destination=ctx.createMediaStreamDestination();
+     mic.gain.value=.8;music.gain.value=.8;
+     limiter.threshold.value=-8;limiter.knee.value=6;limiter.ratio.value=16;limiter.attack.value=.003;limiter.release.value=.2;
+     input.connect(mic);mic.connect(limiter);music.connect(limiter);limiter.connect(destination);
+     mixContext=ctx;micStream=stream;micSource=input;micGain=mic;musicGain=music;mixLimiter=limiter;mixDestination=destination;
+     if(musicSource)musicSource.connect(musicGain);
+     await ctx.resume();
+   }catch(e){streamSafeStop();await ctx.close().catch(()=>{});throw e;}
  }
- async function setupMix(r){
-  const AC=window.AudioContext||window.webkitAudioContext;if(!AC)throw Error('This browser cannot mix audio.');
-  audioContext=new AC();mixedDestination=audioContext.createMediaStreamDestination();
-  micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
-  micGain=audioContext.createGain();micGain.gain.value=1;
-  audioContext.createMediaStreamSource(micStream).connect(micGain).connect(mixedDestination);
-  musicGain=audioContext.createGain();musicGain.gain.value=0.85;
-  audioContext.createMediaElementSource(musicAudio).connect(musicGain).connect(mixedDestination);
-  await audioContext.resume();
-  mixedPublished=await r.localParticipant.publishTrack(mixedDestination.stream.getAudioTracks()[0],{name:'swr-dj-mixed',source:window.LivekitClient.Track.Source.Microphone});
+ function streamSafeStop(){if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}}
+ async function releaseMixer(){
+   if(typeof musicAudio!=='undefined'){musicAudio.pause();musicAudio.removeAttribute('src');}
+   streamSafeStop();
+   if(mixContext){await mixContext.close().catch(()=>{});}
+   mixContext=null;mixDestination=null;micSource=null;micGain=null;musicGain=null;mixLimiter=null;mixedPublication=null;musicSource=null;musicAudio=new Audio();musicAudio.crossOrigin='anonymous';musicAudio.preload='none';musicAudio.onended=()=>{musicStatus.textContent='Song ended. Select the next approved song.';};
  }
+
+ function ui(){start.hidden=!host||!!room;stop.hidden=!host||!room;listen.hidden=!!room||host;leave.hidden=!room||host;mute.hidden=!room||host;}
+ async function refreshRole(){try{const {data:{user}}=await db.auth.getUser();if(!user){host=false;await disconnect();ui();return;}const {data,error}=await db.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();if(error)throw error;host=data?.role==='owner'||(data?.role==='admin'&&data?.admin_enabled===true);ui();}catch(e){host=false;ui();status.textContent='Account check: '+e.message;}}
+ async function disconnect(message='Disconnected from LIVE audio.'){if(room){const old=room;room=null;await old.disconnect();} await releaseMixer();$('swrRemoteAudio').replaceChildren();status.textContent=message;ui();}
  async function connect(asHost){
   if(busy||room)return;busy=true;status.textContent='Connecting to LIVE audio…';
   try{
-   if(!db)throw Error('Supabase did not load.');if(!window.LivekitClient?.Room)throw Error('LiveKit library did not load.');
-   const {data:{session},error}=await db.auth.getSession();if(error||!session?.access_token)throw Error('Sign in under Account first.');
-   if(asHost){await refreshRole();if(!host)throw Error('Only station staff can broadcast.');}
+   if(!db)throw Error('Supabase not loaded.');
+   if(!window.LivekitClient?.Room)throw Error('LiveKit library did not load. Check your internet connection.');
+   const {data:{session},error:authError}=await db.auth.getSession();if(authError||!session?.access_token)throw Error('Please sign in under Account.');
+   if(asHost){await refreshRole();if(!host)throw Error('Only the station owner can broadcast.');}
    const res=await fetch(BASE+'/functions/v1/livekit-token',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+session.access_token,'apikey':KEY},body:JSON.stringify({role:asHost?'host':'listener',room:'sir-woodbury-radio'})});
    const body=await res.json().catch(()=>({}));if(!res.ok)throw Error(body.error||'Token request failed ('+res.status+').');
-   const token=body.token||body.accessToken,url=body.url||body.serverUrl||body.wsUrl;if(!token||!url)throw Error('Missing LiveKit connection details.');
+   const token=body.token||body.accessToken;const url=body.url||body.serverUrl||body.wsUrl;
+   if(!token||!url)throw Error('Token function must return token and LiveKit server url.');
    const r=new window.LivekitClient.Room({adaptiveStream:true,dynacast:true});
-   r.on(window.LivekitClient.RoomEvent.TrackSubscribed,track=>{if(track.kind!=='audio'||asHost)return;
-     // No separate audio controls: one invisible element receives the DJ's mixed audio.
-     const el=track.attach();el.autoplay=true;el.controls=false;el.playsInline=true;el.style.display='none';$('swrRemoteAudio').append(el);remoteAudio=el;
-     el.play().catch(()=>{listen.hidden=false;listen.textContent='🔊 TAP TO HEAR LIVE';status.textContent='Tap LISTEN LIVE to enable sound.';});
-   });
-   r.on(window.LivekitClient.RoomEvent.TrackUnsubscribed,track=>{track.detach().forEach(el=>el.remove());});
-   r.on(window.LivekitClient.RoomEvent.Disconnected,()=>{if(room===r){room=null;status.textContent='LIVE connection ended.';ui();}});
+   r.on(window.LivekitClient.RoomEvent.TrackSubscribed,(track)=>{if(track.kind==='audio'){const audio=track.attach();audio.autoplay=true;audio.controls=false;audio.muted=listenerMuted;$('swrRemoteAudio').append(audio);}});
+   r.on(window.LivekitClient.RoomEvent.TrackUnsubscribed,track=>track.detach().forEach(el=>el.remove()));
+   r.on(window.LivekitClient.RoomEvent.Disconnected,()=>{if(room===r){room=null;status.textContent='LIVE audio connection ended.';ui();}});
    await r.connect(url,token);room=r;
-   if(asHost){await setupMix(r);manualLeave=false;showLive();status.textContent='🔴 ON AIR — microphone and music are combined.';setPresence();}
-   else{manualLeave=false;showLive();status.textContent='🎧 Connected to LIVE.';await r.startAudio?.().catch(()=>{});remoteAudio?.play().catch(()=>{listen.hidden=false;listen.textContent='🔊 TAP TO HEAR LIVE';});}
+   if(asHost){
+     try{
+       await prepareMixer();
+       mixedPublication=await r.localParticipant.publishTrack(mixDestination.stream.getAudioTracks()[0],{name:'sir-woodbury-mixed-audio',source:window.LivekitClient.Track.Source.Microphone});
+     }catch(micError){throw Error('Broadcast mixer failed: '+micError.message+' — Open the station on HTTPS and allow microphone access.');}
+     status.textContent='🔴 YOUR MIXED MICROPHONE + MUSIC STREAM IS LIVE.';
+   }
+   else{status.textContent='🎧 Connected. Listening to Sir Woodbury LIVE.';if(r.startAudio)await r.startAudio().catch(()=>{});}
    ui();
-  }catch(e){const msg='LIVE connection error: '+(e?.message||String(e));await disconnect(msg);console.error('LIVE connection',e);}
+  }catch(e){const message='LIVE connection error: '+(e?.message||String(e));if(room)await disconnect(message);else{await releaseMixer();status.textContent=message;}console.error('Sir Woodbury LIVE connection',e);}
   finally{busy=false;}
  }
- start.onclick=()=>connect(true);stop.onclick=()=>disconnect('Broadcast ended.');
- listen.onclick=()=>{if(room){room.startAudio?.().catch(()=>{});remoteAudio?.play().catch(e=>status.textContent='Sound blocked: '+e.message);listen.hidden=true;}else connect(false);};
- leave.onclick=()=>{manualLeave=true;disconnect('You left LIVE audio.');};
- mute.onclick=()=>{if(!micGain)return;micMuted=!micMuted;micGain.gain.value=micMuted?0:1;ui();status.textContent=micMuted?'🔇 Microphone muted. Music stays live.':'🎤 Microphone live. Music stays live.';};
- function loadApprovedMusic(){approvedMusic=(typeof tracks!=='undefined'?tracks:[]).filter(t=>t&&t.id&&t.url&&t.title&&t.artist&&t.source!=='local');const picker=$('swrLiveMusicPick');picker.replaceChildren(new Option('Choose approved song',''));approvedMusic.forEach((t,i)=>picker.add(new Option(t.artist+' — '+t.title,String(i))));musicStatus.textContent=approvedMusic.length+' approved catalog song(s) available.';}
- $('swrLiveMusicRefresh').onclick=loadApprovedMusic;
- $('swrLiveMusicPlay').onclick=async()=>{try{if(!host||!room||!musicGain)throw Error('Start your real broadcast first.');const ix=$('swrLiveMusicPick').value;if(ix==='')throw Error('Choose an approved song.');const t=approvedMusic[Number(ix)];if(!t?.url)throw Error('Song unavailable. Refresh songs.');musicAudio.src=t.url;await audioContext.resume();await musicAudio.play();musicStatus.textContent='🔴 Broadcasting: '+t.artist+' — '+t.title;}catch(e){musicStatus.textContent='Music error: '+e.message;}};
- $('swrLiveMusicPause').onclick=()=>{if(musicAudio.paused)musicAudio.play().catch(e=>musicStatus.textContent=e.message);else musicAudio.pause();};
- $('swrLiveMusicStop').onclick=()=>{musicAudio.pause();musicAudio.removeAttribute('src');musicAudio.load();musicStatus.textContent='Song stopped. Microphone remains live.';};
- musicAudio.onended=()=>{musicStatus.textContent='Song ended. Choose the next approved song.';};
- db?.auth.onAuthStateChange(event=>{if(event==='SIGNED_OUT'){disconnect();if(presenceChannel){db.removeChannel(presenceChannel);presenceChannel=null;}}setTimeout(()=>{refreshRole();setupPresence();},0);});
- refreshRole();setupPresence();loadApprovedMusic();
+ start.onclick=()=>connect(true);stop.onclick=disconnect;listen.onclick=()=>connect(false);leave.onclick=disconnect;
+ // Existing preview buttons remain previews; never misrepresent them as broadcasting.
+ db?.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')disconnect();setTimeout(refreshRole,0);});
+ refreshRole();
+   // Private LIVE music deck: uses the existing approved catalog and LiveKit room.
+  const deck=document.createElement('div');
+  deck.className='panel';
+  deck.hidden=true;
+  deck.innerHTML='<h2>🎵 LIVE DJ Music</h2><p class="muted">Only approved catalog songs. Music and microphone are mixed into one LIVE stream.</p><select id="swrLiveMusicPick"><option value="">Choose approved song</option></select><div class="row"><button id="swrLiveMusicRefresh">Refresh songs</button><button id="swrLiveMusicPlay" class="primary">▶ Broadcast song</button><button id="swrLiveMusicPause">⏸ Pause</button><button id="swrLiveMusicStop">■ Stop song</button></div><div class="grid" style="margin-top:12px"><div><label for="swrMicLevel">🎤 Microphone: <output id="swrMicValue">80%</output></label><input type="range" id="swrMicLevel" min="0" max="100" value="80" style="width:100%"></div><div><label for="swrMusicLevel">🎵 Music: <output id="swrMusicValue">80%</output></label><input type="range" id="swrMusicLevel" min="0" max="100" value="80" style="width:100%"></div></div><p id="swrLiveMusicStatus" class="muted" role="status">Start your real broadcast first.</p>';
+  box.append(deck);
+  let musicAudio=new Audio();
+  musicAudio.crossOrigin='anonymous';
+  musicAudio.preload='none';
+  let musicSource=null;
+  let approvedMusic=[];
+  const musicStatus=$('swrLiveMusicStatus');
+  function loadApprovedMusic(){
+    // The shared 'tracks' array is populated from the station's approved catalog.
+    approvedMusic=(typeof tracks!=='undefined'?tracks:[])
+      .filter(t=>t&&t.id&&t.url&&t.title&&t.artist&&t.source!=='local');
+    const picker=$('swrLiveMusicPick');
+    picker.replaceChildren(new Option('Choose approved song',''));
+    approvedMusic.forEach((t,i)=>picker.add(new Option(t.artist+' — '+t.title,String(i))));
+    musicStatus.textContent=approvedMusic.length+' approved catalog song(s) available.';
+  }
+  async function stopLiveMusic(){
+    musicAudio.pause();musicAudio.removeAttribute('src');musicAudio.load();
+    musicStatus.textContent='Song stopped. Microphone remains live.';
+  }
+  async function playLiveMusic(){
+    try{
+      if(!host||!room)throw Error('Start your real LIVE broadcast first.');
+      const choice=$('swrLiveMusicPick').value;
+      if(choice==='')throw Error('Choose an approved song first.');
+      const t=approvedMusic[Number(choice)];
+      if(!t?.url)throw Error('Song is unavailable. Refresh songs.');
+      if(!mixContext||!musicGain)throw Error('Start your microphone broadcast first.');
+      if(!musicSource){musicSource=mixContext.createMediaElementSource(musicAudio);musicSource.connect(musicGain);}
+      await mixContext.resume();
+      musicAudio.src=t.url;
+      await musicAudio.play();
+      musicStatus.textContent='🔴 Broadcasting: '+t.artist+' — '+t.title;
+    }catch(e){musicStatus.textContent='Music error: '+e.message;}
+  }
+  for(const [sliderId,outputId,gainKey] of [['swrMicLevel','swrMicValue','mic'],['swrMusicLevel','swrMusicValue','music']]){
+    const slider=$(sliderId),output=$(outputId);
+    slider.addEventListener('input',()=>{
+      const value=Number(slider.value);output.textContent=value+'%';
+      const node=gainKey==='mic'?micGain:musicGain;
+      if(node)node.gain.setTargetAtTime(value/100,mixContext.currentTime,.01);
+    });
+  }
+  $('swrLiveMusicRefresh').onclick=loadApprovedMusic;
+  $('swrLiveMusicPlay').onclick=playLiveMusic;
+  $('swrLiveMusicPause').onclick=()=>{
+    if(musicAudio.paused){musicAudio.play().catch(e=>musicStatus.textContent=e.message);}
+    else musicAudio.pause();
+  };
+  $('swrLiveMusicStop').onclick=stopLiveMusic;
+  musicAudio.onended=()=>{musicStatus.textContent='Song ended. Select the next approved song.';};
+  const oldUi=ui;
+  ui=function(){oldUi();deck.hidden=!host;};
+  const oldDisconnect=disconnect;
+  disconnect=async function(...args){await stopLiveMusic();return oldDisconnect(...args);};
+  loadApprovedMusic();
+
 })();
 </script>
 </body></html>
