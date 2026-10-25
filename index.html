@@ -1392,12 +1392,12 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const status=$('swrBroadcastStatus'), start=$('swrBroadcastStart'),stop=$('swrBroadcastStop'),listen=$('swrBroadcastListen'),leave=$('swrBroadcastLeave');
  const BASE='https://cfxlqceaenqhmeuocquw.supabase.co', KEY='sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw';
  const db=window.supabase?.createClient(BASE,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
- let room=null, host=false, busy=false, autoListener=false, broadcastDetected=false, manuallyLeft=false;
+ let room=null, host=false, busy=false, autoListener=false, broadcastDetected=false, manuallyLeft=false, listenerConnectedAt=0, lastReconnectAt=0;
  const ownerOnlyIds=['liveOwnerIntro','liveDJPanel'];
  function hideOwnerControls(){ownerOnlyIds.forEach(id=>{const el=$(id);if(el)el.style.display=host?'':'none';});}
  function onBroadcastStarted(){if(host||!room||broadcastDetected)return;broadcastDetected=true;manuallyLeft=false;try{player.pause();}catch(e){};document.querySelectorAll('audio').forEach(a=>{if(!a.closest('#swrRemoteAudio')&&!a.closest('#swrBroadcastBox'))a.pause();});switchTab('live');status.textContent='🔴 LIVE NOW — connected automatically.';ui();}
  function onBroadcastEnded(){if(host||!broadcastDetected)return;broadcastDetected=false;status.textContent='Broadcast ended. Returning to Main.';switchTab('home');ui();}
- function checkLivePresence(){if(host||!room)return;const active=[...room.remoteParticipants.values()].some(p=>[...p.trackPublications.values()].some(pub=>pub.kind==='audio' && pub.isSubscribed!==false));if(active)onBroadcastStarted();else onBroadcastEnded();}
+ function checkLivePresence(){if(host||!room)return;const active=[...room.remoteParticipants.values()].some(p=>[...p.trackPublications.values()].some(pub=>pub.kind==='audio' && !pub.isMuted));if(active)onBroadcastStarted();else onBroadcastEnded();}
  
  let mixContext=null,mixDestination=null,micStream=null,micSource=null,micGain=null,musicGain=null,mixLimiter=null,mixedPublication=null;
  async function prepareMixer(){
@@ -1444,8 +1444,11 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    r.on(window.LivekitClient.RoomEvent.TrackUnsubscribed,track=>{track.detach().forEach(el=>el.remove());setTimeout(checkLivePresence,300);});
    r.on(window.LivekitClient.RoomEvent.ParticipantDisconnected,()=>setTimeout(checkLivePresence,300));
    r.on(window.LivekitClient.RoomEvent.TrackPublished,()=>setTimeout(checkLivePresence,300));
+   r.on(window.LivekitClient.RoomEvent.ParticipantConnected,()=>setTimeout(checkLivePresence,300));
+   r.on(window.LivekitClient.RoomEvent.TrackMuted,()=>setTimeout(checkLivePresence,300));
+   r.on(window.LivekitClient.RoomEvent.TrackUnmuted,()=>setTimeout(checkLivePresence,300));
    r.on(window.LivekitClient.RoomEvent.Disconnected,()=>{if(room===r){room=null;onBroadcastEnded();status.textContent='LIVE audio connection ended.';ui();}});
-   await r.connect(url,token);room=r;
+   await r.connect(url,token);room=r;if(!asHost)listenerConnectedAt=Date.now();
    if(asHost){
      try{
        await prepareMixer();
@@ -1459,7 +1462,21 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   finally{busy=false;}
  }
  start.onclick=()=>connect(true);stop.onclick=disconnect;listen.onclick=()=>{manuallyLeft=false;connect(false);};leave.onclick=async()=>{manuallyLeft=true;onBroadcastEnded();await disconnect();};
- setInterval(()=>{if(!host&&!busy&&!room&&!manuallyLeft&&document.documentElement.classList.contains('swr-authenticated'))connect(false);else if(!host&&room)checkLivePresence();},6000);
+ // Detect a broadcast while the listener is already on another tab.
+ // Some browsers/providers do not deliver a late TrackPublished event reliably;
+ // periodically renew an idle listener connection to pick up the new host.
+ setInterval(async()=>{
+   if(host||busy||manuallyLeft||!document.documentElement.classList.contains('swr-authenticated'))return;
+   if(!room){connect(false);return;}
+   checkLivePresence();
+   if(!broadcastDetected&&Date.now()-listenerConnectedAt>14000&&Date.now()-lastReconnectAt>14000){
+     lastReconnectAt=Date.now();busy=true;
+     try{const stale=room;room=null;await stale.disconnect();$('swrRemoteAudio').replaceChildren();}
+     catch(e){console.warn('LIVE listener reconnect',e);}
+     finally{busy=false;}
+     connect(false);
+   }
+ },3000);
  // Existing preview buttons remain previews; never misrepresent them as broadcasting.
  db?.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')disconnect();setTimeout(refreshRole,0);});
  refreshRole();
