@@ -213,7 +213,7 @@ if(client){
     if(error){say('Sign-up failed: '+error.message);return;}
     el('realPassword').value='';
     say(data.session?'Account created and signed in.':'Account created. Check your email for a confirmation link, then sign in.');
-    if(data.session){await showSession(data.session);switchTab('radio');window.scrollTo({top:0,behavior:'instant'});}
+    if(data.session){await showSession(data.session);switchTab('home');window.scrollTo({top:0,behavior:'instant'});}
   };
   el('realSignOut').onclick=async()=>{
     const {error}=await client.auth.signOut();
@@ -1392,7 +1392,13 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const status=$('swrBroadcastStatus'), start=$('swrBroadcastStart'),stop=$('swrBroadcastStop'),listen=$('swrBroadcastListen'),leave=$('swrBroadcastLeave');
  const BASE='https://cfxlqceaenqhmeuocquw.supabase.co', KEY='sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw';
  const db=window.supabase?.createClient(BASE,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
- let room=null, host=false, busy=false;
+ let room=null, host=false, busy=false, autoListener=false, broadcastDetected=false, manuallyLeft=false;
+ const ownerOnlyIds=['liveOwnerIntro','liveDJPanel'];
+ function hideOwnerControls(){ownerOnlyIds.forEach(id=>{const el=$(id);if(el)el.style.display=host?'':'none';});}
+ function onBroadcastStarted(){if(host||!room||broadcastDetected)return;broadcastDetected=true;manuallyLeft=false;try{player.pause();}catch(e){};document.querySelectorAll('audio').forEach(a=>{if(!a.closest('#swrRemoteAudio')&&!a.closest('#swrBroadcastBox'))a.pause();});switchTab('live');status.textContent='🔴 LIVE NOW — connected automatically.';ui();}
+ function onBroadcastEnded(){if(host||!broadcastDetected)return;broadcastDetected=false;status.textContent='Broadcast ended. Returning to Main.';switchTab('home');ui();}
+ function checkLivePresence(){if(host||!room)return;const active=[...room.remoteParticipants.values()].some(p=>[...p.trackPublications.values()].some(pub=>pub.kind==='audio' && pub.isSubscribed!==false));if(active)onBroadcastStarted();else onBroadcastEnded();}
+ 
  let mixContext=null,mixDestination=null,micStream=null,micSource=null,micGain=null,musicGain=null,mixLimiter=null,mixedPublication=null;
  async function prepareMixer(){
    if(mixContext)return;
@@ -1403,7 +1409,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
      const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},video:false});
      const input=ctx.createMediaStreamSource(stream);
      const mic=ctx.createGain(), music=ctx.createGain(), limiter=ctx.createDynamicsCompressor(), destination=ctx.createMediaStreamDestination();
-     mic.gain.value=.8;music.gain.value=.8;
+     mic.gain.value=micIsMuted?0:Number($('swrMicLevel').value)/100;music.gain.value=Number($('swrMusicLevel').value)/100;
      limiter.threshold.value=-8;limiter.knee.value=6;limiter.ratio.value=16;limiter.attack.value=.003;limiter.release.value=.2;
      input.connect(mic);mic.connect(limiter);music.connect(limiter);limiter.connect(destination);
      mixContext=ctx;micStream=stream;micSource=input;micGain=mic;musicGain=music;mixLimiter=limiter;mixDestination=destination;
@@ -1419,8 +1425,8 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    mixContext=null;mixDestination=null;micSource=null;micGain=null;musicGain=null;mixLimiter=null;mixedPublication=null;musicSource=null;musicAudio=new Audio();musicAudio.crossOrigin='anonymous';musicAudio.preload='none';musicAudio.onended=()=>{musicStatus.textContent='Song ended. Select the next approved song.';};
  }
 
- function ui(){start.hidden=!host||!!room;stop.hidden=!host||!room;listen.hidden=!!room||host;leave.hidden=!room||host;mute.hidden=!room||host;}
- async function refreshRole(){try{const {data:{user}}=await db.auth.getUser();if(!user){host=false;await disconnect();ui();return;}const {data,error}=await db.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();if(error)throw error;host=data?.role==='owner'||(data?.role==='admin'&&data?.admin_enabled===true);ui();}catch(e){host=false;ui();status.textContent='Account check: '+e.message;}}
+ function ui(){start.hidden=!host||!!room;stop.hidden=!host||!room;listen.hidden=host||!!room;leave.hidden=host||!room;mute.hidden=host||!room;hideOwnerControls();}
+ async function refreshRole(){try{const {data:{user}}=await db.auth.getUser();if(!user){host=false;await disconnect();ui();return;}const {data,error}=await db.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();if(error)throw error;host=data?.role==='owner'||(data?.role==='admin'&&data?.admin_enabled===true);ui();if(!host&&!room&&!busy&&!manuallyLeft)connect(false);}catch(e){host=false;ui();status.textContent='Account check: '+e.message;}}
  async function disconnect(message='Disconnected from LIVE audio.'){if(room){const old=room;room=null;await old.disconnect();} await releaseMixer();$('swrRemoteAudio').replaceChildren();status.textContent=message;ui();}
  async function connect(asHost){
   if(busy||room)return;busy=true;status.textContent='Connecting to LIVE audio…';
@@ -1434,9 +1440,11 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    const token=body.token||body.accessToken;const url=body.url||body.serverUrl||body.wsUrl;
    if(!token||!url)throw Error('Token function must return token and LiveKit server url.');
    const r=new window.LivekitClient.Room({adaptiveStream:true,dynacast:true});
-   r.on(window.LivekitClient.RoomEvent.TrackSubscribed,(track)=>{if(track.kind==='audio'){const audio=track.attach();audio.autoplay=true;audio.controls=false;audio.muted=listenerMuted;$('swrRemoteAudio').append(audio);}});
-   r.on(window.LivekitClient.RoomEvent.TrackUnsubscribed,track=>track.detach().forEach(el=>el.remove()));
-   r.on(window.LivekitClient.RoomEvent.Disconnected,()=>{if(room===r){room=null;status.textContent='LIVE audio connection ended.';ui();}});
+   r.on(window.LivekitClient.RoomEvent.TrackSubscribed,(track)=>{if(track.kind==='audio'){const audio=track.attach();audio.autoplay=true;audio.controls=false;audio.muted=listenerMuted;$('swrRemoteAudio').append(audio);onBroadcastStarted();}});
+   r.on(window.LivekitClient.RoomEvent.TrackUnsubscribed,track=>{track.detach().forEach(el=>el.remove());setTimeout(checkLivePresence,300);});
+   r.on(window.LivekitClient.RoomEvent.ParticipantDisconnected,()=>setTimeout(checkLivePresence,300));
+   r.on(window.LivekitClient.RoomEvent.TrackPublished,()=>setTimeout(checkLivePresence,300));
+   r.on(window.LivekitClient.RoomEvent.Disconnected,()=>{if(room===r){room=null;onBroadcastEnded();status.textContent='LIVE audio connection ended.';ui();}});
    await r.connect(url,token);room=r;
    if(asHost){
      try{
@@ -1445,12 +1453,13 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
      }catch(micError){throw Error('Broadcast mixer failed: '+micError.message+' — Open the station on HTTPS and allow microphone access.');}
      status.textContent='🔴 YOUR MIXED MICROPHONE + MUSIC STREAM IS LIVE.';
    }
-   else{status.textContent='🎧 Connected. Listening to Sir Woodbury LIVE.';if(r.startAudio)await r.startAudio().catch(()=>{});}
+   else{status.textContent='🎧 Connected — waiting for Sir Woodbury to go LIVE.';if(r.startAudio)await r.startAudio().catch(()=>{status.textContent='Connected. Tap Enable Sound if your browser blocks autoplay.';});checkLivePresence();}
    ui();
   }catch(e){const message='LIVE connection error: '+(e?.message||String(e));if(room)await disconnect(message);else{await releaseMixer();status.textContent=message;}console.error('Sir Woodbury LIVE connection',e);}
   finally{busy=false;}
  }
- start.onclick=()=>connect(true);stop.onclick=disconnect;listen.onclick=()=>connect(false);leave.onclick=disconnect;
+ start.onclick=()=>connect(true);stop.onclick=disconnect;listen.onclick=()=>{manuallyLeft=false;connect(false);};leave.onclick=async()=>{manuallyLeft=true;onBroadcastEnded();await disconnect();};
+ setInterval(()=>{if(!host&&!busy&&!room&&!manuallyLeft&&document.documentElement.classList.contains('swr-authenticated'))connect(false);else if(!host&&room)checkLivePresence();},6000);
  // Existing preview buttons remain previews; never misrepresent them as broadcasting.
  db?.auth.onAuthStateChange((event)=>{if(event==='SIGNED_OUT')disconnect();setTimeout(refreshRole,0);});
  refreshRole();
@@ -1458,7 +1467,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   const deck=document.createElement('div');
   deck.className='panel';
   deck.hidden=true;
-  deck.innerHTML='<h2>🎵 LIVE DJ Music</h2><p class="muted">Only approved catalog songs. Music and microphone are mixed into one LIVE stream.</p><select id="swrLiveMusicPick"><option value="">Choose approved song</option></select><div class="row"><button id="swrLiveMusicRefresh">Refresh songs</button><button id="swrLiveMusicPlay" class="primary">▶ Broadcast song</button><button id="swrLiveMusicPause">⏸ Pause</button><button id="swrLiveMusicStop">■ Stop song</button></div><div class="grid" style="margin-top:12px"><div><label for="swrMicLevel">🎤 Microphone: <output id="swrMicValue">80%</output></label><input type="range" id="swrMicLevel" min="0" max="100" value="80" style="width:100%"></div><div><label for="swrMusicLevel">🎵 Music: <output id="swrMusicValue">80%</output></label><input type="range" id="swrMusicLevel" min="0" max="100" value="80" style="width:100%"></div></div><p id="swrLiveMusicStatus" class="muted" role="status">Start your real broadcast first.</p>';
+  deck.innerHTML='<h2>🎵 LIVE DJ Music</h2><p class="muted">Only approved catalog songs. Music and microphone are mixed into one LIVE stream.</p><select id="swrLiveMusicPick"><option value="">Choose approved song</option></select><div class="row"><button id="swrLiveMusicRefresh">Refresh songs</button><button id="swrLiveMusicPlay" class="primary">▶ Broadcast song</button><button id="swrLiveMusicPause">⏸ Pause</button><button id="swrLiveMusicStop">■ Stop song</button></div><div class="grid" style="margin-top:12px"><div><label for="swrMicLevel">🎤 Microphone: <output id="swrMicValue">80%</output></label><input type="range" id="swrMicLevel" min="0" max="100" value="80" style="width:100%"><button type="button" id="swrMuteMic">🎤 Mute Mic</button></div><div><label for="swrMusicLevel">🎵 Music: <output id="swrMusicValue">80%</output></label><input type="range" id="swrMusicLevel" min="0" max="100" value="80" style="width:100%"></div></div><p id="swrLiveMusicStatus" class="muted" role="status">Start your real broadcast first.</p>';
   box.append(deck);
   let musicAudio=new Audio();
   musicAudio.crossOrigin='anonymous';
@@ -1499,9 +1508,11 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
     slider.addEventListener('input',()=>{
       const value=Number(slider.value);output.textContent=value+'%';
       const node=gainKey==='mic'?micGain:musicGain;
-      if(node)node.gain.setTargetAtTime(value/100,mixContext.currentTime,.01);
+      if(node)node.gain.setTargetAtTime(gainKey==='mic'&&micIsMuted?0:value/100,mixContext.currentTime,.01);
     });
   }
+  let micIsMuted=false;
+  $('swrMuteMic').onclick=()=>{micIsMuted=!micIsMuted;const level=Number($('swrMicLevel').value)/100;if(micGain&&mixContext)micGain.gain.setTargetAtTime(micIsMuted?0:level,mixContext.currentTime,.01);$('swrMuteMic').textContent=micIsMuted?'🔇 Unmute Mic':'🎤 Mute Mic';};
   $('swrLiveMusicRefresh').onclick=loadApprovedMusic;
   $('swrLiveMusicPlay').onclick=playLiveMusic;
   $('swrLiveMusicPause').onclick=()=>{
