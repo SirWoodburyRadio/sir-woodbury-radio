@@ -1386,17 +1386,24 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
 (()=>{
  const $=id=>document.getElementById(id), live=$('live');if(!live)return;
  const box=document.createElement('div');box.id='swrBroadcastBox';
- box.innerHTML='<h2>📡 LIVE Audio Broadcast</h2><p class="muted">One combined LIVE stream carries your microphone and approved music to listeners. Video is off.</p><button id="swrBroadcastStart" class="primary" hidden>🎙️ START REAL BROADCAST</button><button id="swrBroadcastStop" hidden>■ STOP BROADCAST</button><button id="swrBroadcastListen" class="primary">🎧 JOIN LIVE AUDIO</button><button id="swrBroadcastLeave" hidden>Leave live audio</button><p id="swrBroadcastStatus" class="muted" role="status">Not connected.</p><button id="swrListenerMute" hidden>🔇 Mute LIVE</button><div id="swrRemoteAudio"></div>';
+ box.innerHTML='<h2>📡 LIVE Audio Broadcast</h2><p class="muted">One combined LIVE stream carries your microphone and approved music to listeners. Video is off.</p><button id="swrBroadcastStart" class="primary" hidden>🎙️ START REAL BROADCAST</button><button id="swrBroadcastStop" hidden>■ STOP BROADCAST</button><button id="swrBroadcastListen" class="primary">🎧 JOIN LIVE AUDIO</button><button id="swrBroadcastLeave" hidden>Leave live audio</button><p id="swrBroadcastStatus" class="muted" role="status">Not connected.</p><button id="swrListenerMute" hidden>🔇 Mute LIVE</button><button id="swrEnableSound" class="primary" hidden>🔊 ENABLE LIVE SOUND</button><div id="swrRemoteAudio"></div>';
  live.insertBefore(box,live.firstChild);
- const mute=$('swrListenerMute');let listenerMuted=false;mute.onclick=()=>{listenerMuted=!listenerMuted;$('swrRemoteAudio').querySelectorAll('audio').forEach(a=>a.muted=listenerMuted);mute.textContent=listenerMuted?'🔊 Unmute LIVE':'🔇 Mute LIVE';};
+ const mute=$('swrListenerMute'),soundButton=$('swrEnableSound');let listenerMuted=false;mute.onclick=()=>{listenerMuted=!listenerMuted;$('swrRemoteAudio').querySelectorAll('audio').forEach(a=>a.muted=listenerMuted);mute.textContent=listenerMuted?'🔊 Unmute LIVE':'🔇 Mute LIVE';};
  const status=$('swrBroadcastStatus'), start=$('swrBroadcastStart'),stop=$('swrBroadcastStop'),listen=$('swrBroadcastListen'),leave=$('swrBroadcastLeave');
  const BASE='https://cfxlqceaenqhmeuocquw.supabase.co', KEY='sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw';
  const db=window.supabase?.createClient(BASE,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
  let room=null, host=false, busy=false, autoListener=false, broadcastDetected=false, manuallyLeft=false, listenerConnectedAt=0, lastReconnectAt=0;
  const ownerOnlyIds=['liveOwnerIntro','liveDJPanel'];
+ // Live broadcast takes over the listener interface, but never locks out the owner.
+ const liveNavGuard=e=>{if(!broadcastDetected||host)return;const b=e.target.closest('nav button,[data-go]');if(b && (b.dataset.tab||b.dataset.go)!=='live'){e.preventDefault();e.stopImmediatePropagation();switchTab('live');}};
+ document.addEventListener('click',liveNavGuard,true);
+ function updateLiveNav(){document.querySelectorAll('nav button').forEach(b=>{const locked=b.dataset.tab!=='live'&&broadcastDetected&&!host;b.disabled=locked;b.setAttribute('aria-disabled',String(locked));});}
+ async function enableSound(){if(!room)return;try{if(room.startAudio)await room.startAudio();const audios=[...$('swrRemoteAudio').querySelectorAll('audio')];for(const a of audios){a.muted=listenerMuted;await a.play();}soundButton.hidden=true;status.textContent='🔴 LIVE NOW — audio enabled.';}catch(e){soundButton.hidden=false;status.textContent='🔴 LIVE connected. Tap ENABLE LIVE SOUND to hear audio.';}}
+ soundButton.onclick=enableSound;
+
  function hideOwnerControls(){ownerOnlyIds.forEach(id=>{const el=$(id);if(el)el.style.display=host?'':'none';});}
- function onBroadcastStarted(){if(host||!room||broadcastDetected)return;broadcastDetected=true;manuallyLeft=false;try{player.pause();}catch(e){};document.querySelectorAll('audio').forEach(a=>{if(!a.closest('#swrRemoteAudio')&&!a.closest('#swrBroadcastBox'))a.pause();});switchTab('live');status.textContent='🔴 LIVE NOW — connected automatically.';ui();}
- function onBroadcastEnded(){if(host||!broadcastDetected)return;broadcastDetected=false;status.textContent='Broadcast ended. Returning to Main.';switchTab('home');ui();}
+ function onBroadcastStarted(){if(host||!room||broadcastDetected)return;broadcastDetected=true;manuallyLeft=false;try{player.pause();}catch(e){};document.querySelectorAll('audio').forEach(a=>{if(!a.closest('#swrRemoteAudio')&&!a.closest('#swrBroadcastBox'))a.pause();});switchTab('live');status.textContent='🔴 LIVE NOW — connecting sound…';ui();updateLiveNav();enableSound();}
+ function onBroadcastEnded(){if(host||!broadcastDetected)return;broadcastDetected=false;status.textContent='Broadcast ended. Returning to Main.';switchTab('home');soundButton.hidden=true;ui();updateLiveNav();}
  function checkLivePresence(){if(host||!room)return;const active=[...room.remoteParticipants.values()].some(p=>[...p.trackPublications.values()].some(pub=>pub.kind==='audio' && !pub.isMuted));if(active)onBroadcastStarted();else onBroadcastEnded();}
  
  let mixContext=null,mixDestination=null,micStream=null,micSource=null,micGain=null,musicGain=null,mixLimiter=null,mixedPublication=null;
@@ -1425,9 +1432,9 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    mixContext=null;mixDestination=null;micSource=null;micGain=null;musicGain=null;mixLimiter=null;mixedPublication=null;musicSource=null;musicAudio=new Audio();musicAudio.crossOrigin='anonymous';musicAudio.preload='none';musicAudio.onended=()=>{musicStatus.textContent='Song ended. Select the next approved song.';};
  }
 
- function ui(){start.hidden=!host||!!room;stop.hidden=!host||!room;listen.hidden=host||!!room;leave.hidden=host||!room;mute.hidden=host||!room;hideOwnerControls();}
+ function ui(){start.hidden=!host||!!room;stop.hidden=!host||!room;listen.hidden=host||!!room;leave.hidden=host||!room;mute.hidden=host||!room;hideOwnerControls();updateLiveNav();}
  async function refreshRole(){try{const {data:{user}}=await db.auth.getUser();if(!user){host=false;await disconnect();ui();return;}const {data,error}=await db.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();if(error)throw error;host=data?.role==='owner'||(data?.role==='admin'&&data?.admin_enabled===true);ui();if(!host&&!room&&!busy&&!manuallyLeft)connect(false);}catch(e){host=false;ui();status.textContent='Account check: '+e.message;}}
- async function disconnect(message='Disconnected from LIVE audio.'){if(room){const old=room;room=null;await old.disconnect();} await releaseMixer();$('swrRemoteAudio').replaceChildren();status.textContent=message;ui();}
+ async function disconnect(message='Disconnected from LIVE audio.'){if(room){const old=room;room=null;await old.disconnect();} await releaseMixer();$('swrRemoteAudio').replaceChildren();soundButton.hidden=true;status.textContent=message;ui();}
  async function connect(asHost){
   if(busy||room)return;busy=true;status.textContent='Connecting to LIVE audio…';
   try{
@@ -1440,7 +1447,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    const token=body.token||body.accessToken;const url=body.url||body.serverUrl||body.wsUrl;
    if(!token||!url)throw Error('Token function must return token and LiveKit server url.');
    const r=new window.LivekitClient.Room({adaptiveStream:true,dynacast:true});
-   r.on(window.LivekitClient.RoomEvent.TrackSubscribed,(track)=>{if(track.kind==='audio'){const audio=track.attach();audio.autoplay=true;audio.controls=false;audio.muted=listenerMuted;$('swrRemoteAudio').append(audio);onBroadcastStarted();}});
+   r.on(window.LivekitClient.RoomEvent.TrackSubscribed,(track)=>{if(track.kind==='audio'){const audio=track.attach();audio.autoplay=true;audio.controls=false;audio.muted=listenerMuted;$('swrRemoteAudio').append(audio);onBroadcastStarted();enableSound();}});
    r.on(window.LivekitClient.RoomEvent.TrackUnsubscribed,track=>{track.detach().forEach(el=>el.remove());setTimeout(checkLivePresence,300);});
    r.on(window.LivekitClient.RoomEvent.ParticipantDisconnected,()=>setTimeout(checkLivePresence,300));
    r.on(window.LivekitClient.RoomEvent.TrackPublished,()=>setTimeout(checkLivePresence,300));
@@ -1456,7 +1463,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
      }catch(micError){throw Error('Broadcast mixer failed: '+micError.message+' — Open the station on HTTPS and allow microphone access.');}
      status.textContent='🔴 YOUR MIXED MICROPHONE + MUSIC STREAM IS LIVE.';
    }
-   else{status.textContent='🎧 Connected — waiting for Sir Woodbury to go LIVE.';if(r.startAudio)await r.startAudio().catch(()=>{status.textContent='Connected. Tap Enable Sound if your browser blocks autoplay.';});checkLivePresence();}
+   else{status.textContent='🎧 Connected — waiting for Sir Woodbury to go LIVE.';if(r.startAudio)await r.startAudio().catch(()=>{soundButton.hidden=false;status.textContent='Connected. Tap ENABLE LIVE SOUND if your browser blocks autoplay.';});checkLivePresence();}
    ui();
   }catch(e){const message='LIVE connection error: '+(e?.message||String(e));if(room)await disconnect(message);else{await releaseMixer();status.textContent=message;}console.error('Sir Woodbury LIVE connection',e);}
   finally{busy=false;}
