@@ -1573,4 +1573,62 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
 
 })();
 </script>
+
+<style id="swr-shared-chat-style">
+#swrLiveChat{border:1px solid #874049;background:linear-gradient(145deg,#27171d,#15151b);border-radius:16px;padding:18px;margin:18px 0}
+#swrChatMessages{height:260px;overflow-y:auto;background:#101015;border:1px solid #43333b;border-radius:11px;padding:12px}
+.swr-chat-msg{padding:9px 0;border-bottom:1px solid #30272e;overflow-wrap:anywhere}
+.swr-chat-msg:last-child{border:0}.swr-chat-msg strong{color:#ff969c}.swr-chat-msg small{color:#a6a0a8;margin-left:8px}
+#swrChatForm{display:flex;gap:8px;margin-top:12px}#swrChatInput{flex:1;min-width:0}#swrChatForm button{flex-shrink:0}
+@media(max-width:480px){#swrChatForm{flex-wrap:wrap}#swrChatForm button{width:100%}}
+</style>
+<script id="swr-shared-chat">
+(()=>{
+ const live=document.getElementById('live');if(!live)return;
+ const chat=document.createElement('div');chat.id='swrLiveChat';
+ chat.innerHTML='<h2>💬 LIVE Group Chat</h2><p class="muted">Chat with Sir Woodbury and everyone tuned in.</p><div id="swrChatMessages" role="log" aria-live="polite">Sign in to join the conversation.</div><form id="swrChatForm"><input id="swrChatInput" maxlength="500" placeholder="Message the LIVE room…" aria-label="Chat message" required><button class="primary" type="submit">Send</button></form><p class="muted" id="swrChatStatus" role="status"></p>';
+ live.append(chat);
+ const messages=document.getElementById('swrChatMessages'),form=document.getElementById('swrChatForm'),input=document.getElementById('swrChatInput'),status=document.getElementById('swrChatStatus');
+ const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
+ let lastFingerprint='',loading=false;
+ async function refresh(){
+  if(!db||loading||!live.classList.contains('active'))return;
+  loading=true;
+  try{
+   const {data:auth}=await db.auth.getUser();if(!auth?.user){messages.textContent='Sign in to join LIVE chat.';return;}
+   const {data,error}=await db.from('swr_live_chat_messages').select('id,display_name,message,created_at').order('created_at',{ascending:false}).limit(75);
+   if(error)throw error;
+   const rows=(data||[]).reverse(),fingerprint=rows.map(x=>x.id).join(',');
+   if(fingerprint===lastFingerprint)return;
+   const nearBottom=messages.scrollHeight-messages.scrollTop-messages.clientHeight<80;
+   messages.replaceChildren();
+   if(!rows.length)messages.textContent='No messages yet. Say hello!';
+   for(const m of rows){
+    const item=document.createElement('div');item.className='swr-chat-msg';
+    const name=document.createElement('strong');name.textContent=m.display_name;
+    const time=document.createElement('small');time.textContent=new Date(m.created_at).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+    const body=document.createElement('div');body.textContent=m.message;
+    item.append(name,time,body);messages.append(item);
+   }
+   lastFingerprint=fingerprint;if(nearBottom)messages.scrollTop=messages.scrollHeight;
+   status.textContent='';
+  }catch(e){status.textContent='Chat unavailable: '+e.message+' (Run the chat SQL setup first.)';}
+  finally{loading=false;}
+ }
+ form.addEventListener('submit',async e=>{
+  e.preventDefault();if(!db)return;
+  const msg=input.value.trim();if(!msg)return;
+  const button=form.querySelector('button');button.disabled=true;
+  try{
+   const {data:auth,error:authError}=await db.auth.getUser();if(authError||!auth?.user)throw Error('Please sign in first.');
+   const user=auth.user;
+   const name=(user.user_metadata?.display_name||user.user_metadata?.full_name||user.email?.split('@')[0]||'Listener').slice(0,50);
+   const {error}=await db.from('swr_live_chat_messages').insert({user_id:user.id,display_name:name,message:msg});
+   if(error)throw error;input.value='';await refresh();
+  }catch(err){status.textContent='Could not send: '+err.message;}
+  finally{button.disabled=false;}
+ });
+ setInterval(refresh,3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});refresh();
+})();
+</script>
 </body></html>
