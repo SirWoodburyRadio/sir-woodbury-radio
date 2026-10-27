@@ -49,6 +49,7 @@
 <style id="swr-live-voting-only-on-live-tab">#radio #radioLiveVote{display:none!important}</style><style id="swr-auth-wall-css">html:not(.swr-authenticated) nav button:not([data-tab="account"]),html:not(.swr-authenticated) main section:not(#account){display:none!important}html:not(.swr-authenticated) nav button[data-tab="account"]{display:inline-block!important}#swr-auth-welcome{padding:18px;border:1px solid #8e353c;border-radius:14px;background:#281b20;margin:16px 0}html.swr-authenticated #swr-auth-welcome{display:none!important}</style><style id="swr-listener-live-only-nav">html.swr-listener-live-only nav button:not([data-tab="live"]){display:none!important}html.swr-listener-live-only nav{justify-content:center}html.swr-listener-live-only nav button[data-tab="live"]{display:inline-block!important}</style><style id="swr-broadcast-visibility-fix">
 html.swr-authenticated:not(.swr-is-owner):not(.swr-broadcast-active) nav button[data-tab="live"]{display:none!important}
 html:not(.swr-broadcast-active) #swrLiveChat{display:none!important}
+html.swr-authenticated.swr-broadcast-active nav button[data-tab="live"]{display:inline-block!important}
 </style></head><body><header><div class="logo"><div class="mark">BW</div><div><div class="brand">SIR WOODBURY RADIO</div><div class="sub">INDEPENDENT MUSIC • NO BOUNDARIES</div></div></div><div class="top-tools"><span class="pill">STUDIO FOUR</span><div id="liveCountdown" class="countdown">📻 NEXT LIVE: NOT SCHEDULED</div></div></header><nav><button data-tab="home" class="active">🏠 Main</button><button data-tab="radio">📻 Radio</button><button data-tab="discover">🎵 Discover</button><button data-tab="live">🔴 LIVE</button><button data-tab="studio">🎙️ My Studio</button><button data-tab="submit">📤 Submit Music</button><button data-tab="charts">🏆 Vote / Top 20</button><button data-tab="account">👤 Account</button><button data-tab="admin">🛡️ Review</button></nav><main><section id="home" class="active">
 <div class="hero"><div class="eyebrow">SIR WOODBURY RADIO • THIS WEEK</div>
 <h1>Your Top 20<br>Votes This Week</h1>
@@ -1483,6 +1484,11 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    if(asHost){
      try{
        await prepareMixer();
+       // Clear previous broadcast chat once, before listeners receive the LIVE track.
+       // The SQL function permits this operation only to authorized station staff.
+       const {error:chatResetError}=await db.rpc('swr_reset_live_chat');
+       if(chatResetError)throw Error('Chat reset unavailable: '+chatResetError.message+' — install the companion SQL before going LIVE.');
+       window.dispatchEvent(new CustomEvent('swr-chat-reset'));
        mixedPublication=await r.localParticipant.publishTrack(mixDestination.stream.getAudioTracks()[0],{name:'sir-woodbury-mixed-audio',source:window.LivekitClient.Track.Source.Microphone});
      }catch(micError){throw Error('Broadcast mixer failed: '+micError.message+' — Open the station on HTTPS and allow microphone access.');}
      status.textContent='🔴 YOUR MIXED MICROPHONE + MUSIC STREAM IS LIVE.';updateLiveNav();
@@ -1594,13 +1600,23 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  live.append(chat);
  const messages=document.getElementById('swrChatMessages'),form=document.getElementById('swrChatForm'),input=document.getElementById('swrChatInput'),status=document.getElementById('swrChatStatus');
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
- let lastFingerprint='',loading=false;
+ let lastFingerprint='',loading=false,joinedAt=null,wasLive=false;
  async function refresh(){
+  const isLive=document.documentElement.classList.contains('swr-broadcast-active');
+  const isOwner=document.documentElement.classList.contains('swr-is-owner');
+  if(!isLive){
+   if(wasLive){joinedAt=null;wasLive=false;lastFingerprint='';messages.replaceChildren();}
+   return;
+  }
+  if(!wasLive){wasLive=true;joinedAt=new Date().toISOString();lastFingerprint='';messages.replaceChildren();}
   if(!db||loading||!live.classList.contains('active'))return;
   loading=true;
   try{
    const {data:auth}=await db.auth.getUser();if(!auth?.user){messages.textContent='Sign in to join LIVE chat.';return;}
-   const {data,error}=await db.from('swr_live_chat_messages').select('id,display_name,message,created_at').order('created_at',{ascending:false}).limit(75);
+   // Listener sees messages from this join onward; owner sees entire current show.
+   let query=db.from('swr_live_chat_messages').select('id,display_name,message,created_at');
+   if(!isOwner&&joinedAt)query=query.gte('created_at',joinedAt);
+   const {data,error}=await query.order('created_at',{ascending:false}).limit(75);
    if(error)throw error;
    const rows=(data||[]).reverse(),fingerprint=rows.map(x=>x.id).join(',');
    if(fingerprint===lastFingerprint)return;
@@ -1632,6 +1648,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   }catch(err){status.textContent='Could not send: '+err.message;}
   finally{button.disabled=false;}
  });
+ window.addEventListener('swr-chat-reset',()=>{lastFingerprint='';messages.replaceChildren();refresh();});
  setInterval(refresh,3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});refresh();
 })();
 </script>
