@@ -1831,7 +1831,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const consolePanel=document.createElement('div');consolePanel.id='swrOwnerConsole';consolePanel.className='panel';consolePanel.hidden=true;
  consolePanel.innerHTML=`<h2>🎛️ LIVE Show Modes & Voting</h2>
  <div class="swr-console-card" id="swrBattleActivateCard"><h3>⚔️ 4. Battle Arena Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Battle arena activation"><button type="button" class="swr-on" id="swrBattleModeOn">BATTLE ON</button><button type="button" class="swr-off" id="swrBattleModeOff">BATTLE OFF</button></div><div id="swrBattleOwnerSlot"></div></div>
- <div class="swr-console-card"><h3>🎵 5. PLAY IT OR GO AWAY Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Play It or Go Away activation"><button type="button" class="swr-on" id="swrPlayModeOn">ON</button><button type="button" class="swr-off" id="swrPlayModeOff">OFF</button></div><p class="muted">Turn ON to use the song review stage. Choose and stage a song in the private DJ window. Turning OFF closes its voting.</p><div id="swrPlayReviewSlot"></div><div class="row"><button type="button" id="swrPlayStagedSong" class="primary">▶ PLAY STAGED SONG LIVE</button><button type="button" id="swrStopReviewSong">■ STOP SONG</button><button type="button" id="swrResetReviewVotes">🔄 RESET VOTES / NEW ROUND</button></div><p class="muted" id="swrPlayStageHelp">A pending review song can play LIVE without joining regular rotation. Confirm public-streaming permission before playing.</p></div>
+ <div class="swr-console-card"><h3>🎵 5. PLAY IT OR GO AWAY Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Play It or Go Away activation"><button type="button" class="swr-on" id="swrPlayModeOn">ON</button><button type="button" class="swr-off" id="swrPlayModeOff">OFF</button></div><p class="muted">Turn ON to use the song review stage. The pending-song staging controls are directly below. Turning OFF hides the listener arena and closes its voting.</p><div id="swrPlayReviewSlot"></div><div class="row"><button type="button" id="swrPlayStagedSong" class="primary">▶ PLAY STAGED SONG LIVE</button><button type="button" id="swrStopReviewSong">■ STOP SONG</button><button type="button" id="swrResetReviewVotes">🔄 RESET VOTES / NEW ROUND</button></div><p class="muted" id="swrPlayStageHelp">A pending review song can play LIVE without joining regular rotation. Confirm public-streaming permission before playing.</p></div>
  <div class="swr-console-card"><h3 id="swrActiveVoteTitle">🗳️ 6. Voting — PLAY IT OR GO AWAY</h3><div class="swr-toggle-pair" role="group" aria-label="Voting on or off"><button type="button" class="swr-on" id="swrVotingOn">VOTING ON</button><button type="button" class="swr-off" id="swrVotingOff">VOTING OFF</button></div><p class="muted" id="swrVotingModeStatus">Checking voting status…</p></div>`;
  const ownerBattle=E('swrBattleOwner');
  const chat=E('swrLiveChat');
@@ -1842,7 +1842,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  let anchor=broadcast;
  for(const panel of [chat])if(panel){if(anchor)anchor.after(panel);else live.prepend(panel);anchor=panel;}
  if(anchor)anchor.after(consolePanel);else live.prepend(consolePanel);
- if(review)E('swrPlayReviewSlot').append(review);
+ if(review){E('swrPlayReviewSlot').append(review);review.hidden=false;}
  if(ownerBattle)E('swrBattleOwnerSlot').append(ownerBattle);
  const originalVoting=E('livePlay')?.closest('.panel');
  if(originalVoting){originalVoting.id='swrPlayViewer';originalVoting.hidden=true;live.append(originalVoting);}
@@ -1865,12 +1865,12 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    const [b,r,m]=await Promise.all([db.rpc('swr_battle_status'),db.rpc('live_current_round'),db.rpc('swr_review_mode_status')]);
    if(!b.error)battle=typeof b.data==='string'?JSON.parse(b.data):b.data;
    if(!r.error)round=(r.data||[])[0]||null;
-   if(!m.error)playMode=m.data===true;else status.textContent='Run the supplied review activation SQL first.';
+   if(!m.error)playMode=m.data===true;else {playMode=false;status.textContent='Review mode database error: '+m.error.message+' — run the review activation SQL.';}
    const battleEnabled=!!battle?.enabled;
    mark(battleOn,battleOff,battleEnabled);mark(playOn,playOff,playMode);
-   if(review)review.hidden=!staff||!playMode;
-   const reviewSlot=E('swrPlayReviewSlot');if(reviewSlot)reviewSlot.hidden=!playMode;
-   E('swrPlayStagedSong').hidden=!playMode;
+   if(review)review.hidden=!staff;
+   const reviewSlot=E('swrPlayReviewSlot');if(reviewSlot)reviewSlot.hidden=!staff;
+   E('swrPlayStagedSong').hidden=!staff;
    const viewer=E('swrPlayViewer');if(viewer)viewer.hidden=!playMode||battleEnabled;
    const selected=battleEnabled?'battle':'play';
    const isOpen=selected==='battle'?!!battle?.voting_open:!!round&&round.state==='open';
@@ -1885,8 +1885,8 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  async function action(fn){if(working||!staff)return;working=true;status.textContent='Saving…';try{await fn();}catch(e){status.textContent='Could not change setting: '+e.message;}finally{working=false;setTimeout(refresh,250);}}
  battleOn.onclick=()=>action(async()=>{if(!battle?.enabled)E('swrBattleToggle')?.click();});
  battleOff.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleToggle')?.click();});
- playOn.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:true});if(r.error)throw r.error;playMode=true;});
- playOff.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:false});if(r.error)throw r.error;playMode=false;if(round?.state==='open')E('liveCloseVote')?.click();});
+ playOn.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:true});if(r.error)throw r.error;playMode=true;mark(playOn,playOff,true);});
+ playOff.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:false});if(r.error)throw r.error;playMode=false;mark(playOn,playOff,false);if(round?.state==='open')E('liveCloseVote')?.click();});
  voteOn.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'open'});if(r.error)throw r.error;}else if(playMode&&round)E('liveOpenVote')?.click();});
  voteOff.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'close'});if(r.error)throw r.error;}else if(round)E('liveCloseVote')?.click();});
  E('swrPlayStagedSong').onclick=()=>action(async()=>{
