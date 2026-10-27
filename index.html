@@ -1097,7 +1097,7 @@ updatePlaybackUI();
 </script>
 <style>nav button[hidden], #liveDJPanel[hidden]{display:none!important} body:not(.swr-review-staff) nav button[data-tab="admin"], body:not(.swr-studio-staff) nav button[data-tab="studio"]{display:none!important}</style>
 <style>
-#live > .hero, #live > .panel:not(#liveDJPanel):not(#liveOwnerIntro):not(#swrBattleViewer){display:none!important}
+#live > .hero, #live > .panel:not(#liveDJPanel):not(#liveOwnerIntro):not(#swrBattleViewer):not(#swrOwnerConsole):not(#swrSimpleDJ):not(#swrLiveChat):not(#swrBroadcastBox){display:none!important}
 nav button[data-tab="studio"][hidden]{display:none!important}
 #guestCameraPlan{border-left:3px solid #e13b3b;margin-top:16px;padding:12px;background:#281b21;border-radius:9px}
 </style>
@@ -1788,4 +1788,84 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  // Polling means all connected viewers update without page reload; no extra realtime configuration needed.
  setInterval(refresh,1800);setTimeout(refresh,500);
 })();
-</script></body></html>
+</script>
+<style id="swr-owner-console-style">
+#swrOwnerConsole[hidden],#swrBattleOwner[hidden],#swrBattleViewer[hidden]{display:none!important}
+#swrOwnerConsole{border:2px solid #9b404a;background:#21191f}
+.swr-console-card{background:#151419;border:1px solid #66414b;border-radius:14px;padding:15px;margin:12px 0}
+.swr-console-card h3{margin:0 0 10px;font-size:19px}
+.swr-toggle-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.swr-toggle-pair button{min-width:0;border:2px solid;padding:14px 6px;font-weight:900;background:transparent}
+.swr-toggle-pair .swr-on{border-color:#38a666;color:#8de6ad}
+.swr-toggle-pair .swr-off{border-color:#d34b56;color:#ff9da4}
+.swr-toggle-pair .swr-on[aria-pressed="true"]{background:#176b3b;color:white}
+.swr-toggle-pair .swr-off[aria-pressed="true"]{background:#bb292f;color:white}
+#swrBattleOwner{border:0;background:transparent;box-shadow:none;padding:0;margin:0}
+#swrBattleOwner>h2,#swrBattleOwner>p:first-of-type,#swrBattleToggle,#swrBattleOpen,#swrBattleClose{display:none!important}
+#swrBattleOwner #swrBattleSetup{margin:0}
+#swrSimpleDJ #swrOpen,#swrSimpleDJ #swrClose,#liveDJPanel #liveOpenVote,#liveDJPanel #liveCloseVote{display:none!important}
+#swrOwnerConsole .muted{font-size:13px}
+</style>
+<script id="swr-owner-console-v2">
+(()=>{
+ 'use strict';
+ const E=id=>document.getElementById(id),live=E('live');if(!live)return;
+ const consolePanel=document.createElement('div');consolePanel.id='swrOwnerConsole';consolePanel.className='panel';consolePanel.hidden=true;
+ consolePanel.innerHTML=`<h2>🎛️ LIVE Show Modes & Voting</h2>
+ <div class="swr-console-card" id="swrBattleActivateCard"><h3>⚔️ 4. Battle Arena Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Battle arena activation"><button type="button" class="swr-on" id="swrBattleModeOn">BATTLE ON</button><button type="button" class="swr-off" id="swrBattleModeOff">BATTLE OFF</button></div><div id="swrBattleOwnerSlot"></div></div>
+ <div class="swr-console-card"><h3>🎵 5. PLAY IT OR GO AWAY Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Play It or Go Away activation"><button type="button" class="swr-on" id="swrPlayModeOn">ON</button><button type="button" class="swr-off" id="swrPlayModeOff">OFF</button></div><p class="muted">Turn ON to use the song review stage. Choose and stage a song in the private DJ window. Turning OFF closes its voting.</p></div>
+ <div class="swr-console-card"><h3 id="swrActiveVoteTitle">🗳️ 6. Voting — PLAY IT OR GO AWAY</h3><div class="swr-toggle-pair" role="group" aria-label="Voting on or off"><button type="button" class="swr-on" id="swrVotingOn">VOTING ON</button><button type="button" class="swr-off" id="swrVotingOff">VOTING OFF</button></div><p class="muted" id="swrVotingModeStatus">Checking voting status…</p></div>`;
+ const ownerBattle=E('swrBattleOwner');
+ const chat=E('swrLiveChat');
+ // Keep the real broadcast box first, the existing DJ window second, chat third.
+ const broadcast=E('swrBroadcastBox');
+ const dj=E('swrSimpleDJ'),review=E('liveDJPanel');
+ if(broadcast)live.insertBefore(broadcast,live.firstChild);
+ let anchor=broadcast;
+ for(const panel of [dj,review,chat])if(panel){if(anchor)anchor.after(panel);else live.prepend(panel);anchor=panel;}
+ if(anchor)anchor.after(consolePanel);else live.prepend(consolePanel);
+ if(ownerBattle)E('swrBattleOwnerSlot').append(ownerBattle);
+ const battleOn=E('swrBattleModeOn'),battleOff=E('swrBattleModeOff');
+ const playOn=E('swrPlayModeOn'),playOff=E('swrPlayModeOff');
+ const voteOn=E('swrVotingOn'),voteOff=E('swrVotingOff');
+ const status=E('swrVotingModeStatus');
+ const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
+ let playMode=localStorage.getItem('swr-play-go-owner-mode')!=='off';
+ let battle=null,round=null,staff=false,working=false;
+ const mark=(yes,no,enabled)=>{yes.setAttribute('aria-pressed',String(!!enabled));no.setAttribute('aria-pressed',String(!enabled));};
+ async function refresh(){
+  if(working||!db)return;
+  try{
+   const {data:auth}=await db.auth.getUser();if(!auth?.user){staff=false;consolePanel.hidden=true;return;}
+   const {data:profile}=await db.from('profiles').select('role,admin_enabled').eq('id',auth.user.id).maybeSingle();
+   staff=profile?.role==='owner'||(profile?.role==='admin'&&profile.admin_enabled===true);
+   consolePanel.hidden=!staff;if(!staff)return;
+   const [b,r]=await Promise.all([db.rpc('swr_battle_status'),db.rpc('live_current_round')]);
+   if(!b.error)battle=typeof b.data==='string'?JSON.parse(b.data):b.data;
+   if(!r.error)round=(r.data||[])[0]||null;
+   const battleEnabled=!!battle?.enabled;
+   mark(battleOn,battleOff,battleEnabled);mark(playOn,playOff,playMode);
+   const selected=battleEnabled?'battle':'play';
+   const isOpen=selected==='battle'?!!battle?.voting_open:!!round&&round.state==='open';
+   mark(voteOn,voteOff,isOpen);
+   E('swrActiveVoteTitle').textContent='🗳️ 6. Voting — '+(selected==='battle'?'BATTLE ARENA':'PLAY IT OR GO AWAY');
+   voteOn.disabled=selected==='play'&&(!playMode||!round);
+   voteOff.disabled=selected==='play'&&!round;
+   status.textContent=selected==='battle'?(isOpen?'Battle voting is OPEN.':'Battle voting is CLOSED.'):
+    !playMode?'Play It or Go Away is switched OFF.':!round?'Stage a song in the DJ window before opening voting.':isOpen?'Play It or Go Away voting is OPEN.':'Play It or Go Away voting is CLOSED.';
+  }catch(e){status.textContent='Could not check voting status: '+e.message;}
+ }
+ async function action(fn){if(working||!staff)return;working=true;status.textContent='Saving…';try{await fn();}catch(e){status.textContent='Could not change setting: '+e.message;}finally{working=false;setTimeout(refresh,250);}}
+ battleOn.onclick=()=>action(async()=>{if(!battle?.enabled)E('swrBattleToggle')?.click();});
+ battleOff.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleToggle')?.click();});
+ playOn.onclick=()=>{playMode=true;localStorage.setItem('swr-play-go-owner-mode','on');refresh();};
+ playOff.onclick=()=>action(async()=>{playMode=false;localStorage.setItem('swr-play-go-owner-mode','off');if(round?.state==='open')E('liveCloseVote')?.click();});
+ voteOn.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleOpen')?.click();else if(playMode&&round)E('liveOpenVote')?.click();});
+ voteOff.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleClose')?.click();else if(round)E('liveCloseVote')?.click();});
+ // Battle commands are async, so the next poll verifies the server-confirmed state.
+ setInterval(refresh,2000);
+ db?.auth.onAuthStateChange(()=>setTimeout(refresh,400));
+ setTimeout(refresh,800);
+})();
+</script>
+</body></html>
