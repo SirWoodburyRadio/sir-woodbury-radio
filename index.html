@@ -1614,6 +1614,19 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   }
   let micIsMuted=false;
   $('swrMuteMic').onclick=()=>{micIsMuted=!micIsMuted;const level=Number($('swrMicLevel').value)/100;if(micGain&&mixContext)micGain.gain.setTargetAtTime(micIsMuted?0:level,mixContext.currentTime,.01);$('swrMuteMic').textContent=micIsMuted?'🔇 Unmute Mic':'🎤 Mute Mic';};
+  // Private pending submissions may be broadcast only by the LIVE host, without approving rotation.
+  window.swrPlayPendingReviewLive=async function(songId){
+    if(!host||!room||!mixContext||!musicGain)throw Error('Start the real LIVE broadcast first.');
+    if(!songId)throw Error('Choose a pending review song first.');
+    const {data:song,error}=await db.from('songs').select('id,title,description,audio_path,status').eq('id',songId).eq('status','pending').single();
+    if(error||!song?.audio_path)throw Error(error?.message||'Pending review audio unavailable.');
+    const {data:signed,error:signError}=await db.storage.from('song-audio').createSignedUrl(song.audio_path,3600);
+    if(signError||!signed?.signedUrl)throw Error(signError?.message||'Cannot access pending audio.');
+    if(!musicSource){musicSource=mixContext.createMediaElementSource(musicAudio);musicSource.connect(musicGain);}
+    await mixContext.resume();musicAudio.pause();musicAudio.src=signed.signedUrl;
+    await musicAudio.play();musicStatus.textContent='🔴 LIVE REVIEW — '+song.title+' (not in rotation)';
+  };
+  window.swrStopReviewLive=()=>stopLiveMusic();
   $('swrLiveMusicRefresh').onclick=loadApprovedMusic;
   $('swrLiveMusicPlay').onclick=playLiveMusic;
   $('swrLiveMusicPause').onclick=()=>{
@@ -1818,7 +1831,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const consolePanel=document.createElement('div');consolePanel.id='swrOwnerConsole';consolePanel.className='panel';consolePanel.hidden=true;
  consolePanel.innerHTML=`<h2>🎛️ LIVE Show Modes & Voting</h2>
  <div class="swr-console-card" id="swrBattleActivateCard"><h3>⚔️ 4. Battle Arena Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Battle arena activation"><button type="button" class="swr-on" id="swrBattleModeOn">BATTLE ON</button><button type="button" class="swr-off" id="swrBattleModeOff">BATTLE OFF</button></div><div id="swrBattleOwnerSlot"></div></div>
- <div class="swr-console-card"><h3>🎵 5. PLAY IT OR GO AWAY Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Play It or Go Away activation"><button type="button" class="swr-on" id="swrPlayModeOn">ON</button><button type="button" class="swr-off" id="swrPlayModeOff">OFF</button></div><p class="muted">Turn ON to use the song review stage. Choose and stage a song in the private DJ window. Turning OFF closes its voting.</p><div id="swrPlayReviewSlot"></div><button type="button" id="swrPlayStagedSong" class="primary">▶ PLAY STAGED SONG ON AIR</button><p class="muted" id="swrPlayStageHelp">Stage the review song above. To broadcast it, it must be approved and available in LIVE DJ Music.</p></div>
+ <div class="swr-console-card"><h3>🎵 5. PLAY IT OR GO AWAY Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Play It or Go Away activation"><button type="button" class="swr-on" id="swrPlayModeOn">ON</button><button type="button" class="swr-off" id="swrPlayModeOff">OFF</button></div><p class="muted">Turn ON to use the song review stage. Choose and stage a song in the private DJ window. Turning OFF closes its voting.</p><div id="swrPlayReviewSlot"></div><div class="row"><button type="button" id="swrPlayStagedSong" class="primary">▶ PLAY STAGED SONG LIVE</button><button type="button" id="swrStopReviewSong">■ STOP SONG</button><button type="button" id="swrResetReviewVotes">🔄 RESET VOTES / NEW ROUND</button></div><p class="muted" id="swrPlayStageHelp">A pending review song can play LIVE without joining regular rotation. Confirm public-streaming permission before playing.</p></div>
  <div class="swr-console-card"><h3 id="swrActiveVoteTitle">🗳️ 6. Voting — PLAY IT OR GO AWAY</h3><div class="swr-toggle-pair" role="group" aria-label="Voting on or off"><button type="button" class="swr-on" id="swrVotingOn">VOTING ON</button><button type="button" class="swr-off" id="swrVotingOff">VOTING OFF</button></div><p class="muted" id="swrVotingModeStatus">Checking voting status…</p></div>`;
  const ownerBattle=E('swrBattleOwner');
  const chat=E('swrLiveChat');
@@ -1832,14 +1845,14 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  if(review)E('swrPlayReviewSlot').append(review);
  if(ownerBattle)E('swrBattleOwnerSlot').append(ownerBattle);
  const originalVoting=E('livePlay')?.closest('.panel');
- if(originalVoting){originalVoting.id='swrPlayViewer';live.append(originalVoting);}
- const originalHero=live.querySelector('.hero');if(originalHero)originalHero.style.display='none';
+ if(originalVoting){originalVoting.id='swrPlayViewer';originalVoting.hidden=true;live.append(originalVoting);}
+ const originalHero=live.querySelector('.hero');if(originalHero)originalHero.style.display='none';const deadIntro=E('liveOwnerIntro');if(deadIntro)deadIntro.remove();
  const battleOn=E('swrBattleModeOn'),battleOff=E('swrBattleModeOff');
  const playOn=E('swrPlayModeOn'),playOff=E('swrPlayModeOff');
  const voteOn=E('swrVotingOn'),voteOff=E('swrVotingOff');
  const status=E('swrVotingModeStatus');
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
- let playMode=localStorage.getItem('swr-play-go-owner-mode')==='on';
+ let playMode=false;
  let battle=null,round=null,staff=false,working=false;
  const mark=(yes,no,enabled)=>{yes.setAttribute('aria-pressed',String(!!enabled));no.setAttribute('aria-pressed',String(!enabled));};
  async function refresh(){
@@ -1849,9 +1862,10 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    const {data:profile}=await db.from('profiles').select('role,admin_enabled').eq('id',auth.user.id).maybeSingle();
    staff=profile?.role==='owner'||(profile?.role==='admin'&&profile.admin_enabled===true);
    consolePanel.hidden=!staff;if(!staff)return;
-   const [b,r]=await Promise.all([db.rpc('swr_battle_status'),db.rpc('live_current_round')]);
+   const [b,r,m]=await Promise.all([db.rpc('swr_battle_status'),db.rpc('live_current_round'),db.rpc('swr_review_mode_status')]);
    if(!b.error)battle=typeof b.data==='string'?JSON.parse(b.data):b.data;
    if(!r.error)round=(r.data||[])[0]||null;
+   if(!m.error)playMode=m.data===true;else status.textContent='Run the supplied review activation SQL first.';
    const battleEnabled=!!battle?.enabled;
    mark(battleOn,battleOff,battleEnabled);mark(playOn,playOff,playMode);
    if(review)review.hidden=!staff||!playMode;
@@ -1871,17 +1885,35 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  async function action(fn){if(working||!staff)return;working=true;status.textContent='Saving…';try{await fn();}catch(e){status.textContent='Could not change setting: '+e.message;}finally{working=false;setTimeout(refresh,250);}}
  battleOn.onclick=()=>action(async()=>{if(!battle?.enabled)E('swrBattleToggle')?.click();});
  battleOff.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleToggle')?.click();});
- playOn.onclick=()=>{playMode=true;localStorage.setItem('swr-play-go-owner-mode','on');refresh();};
- playOff.onclick=()=>action(async()=>{playMode=false;localStorage.setItem('swr-play-go-owner-mode','off');if(round?.state==='open')E('liveCloseVote')?.click();});
+ playOn.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:true});if(r.error)throw r.error;playMode=true;});
+ playOff.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:false});if(r.error)throw r.error;playMode=false;if(round?.state==='open')E('liveCloseVote')?.click();});
  voteOn.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'open'});if(r.error)throw r.error;}else if(playMode&&round)E('liveOpenVote')?.click();});
  voteOff.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'close'});if(r.error)throw r.error;}else if(round)E('liveCloseVote')?.click();});
- E('swrPlayStagedSong').onclick=()=>{
-  const title=round?.title;const picker=E('swrLiveMusicPick');
-  if(!title||!picker){status.textContent='Stage a song first and start your real broadcast.';return;}
-  const match=Array.from(picker.options).find(o=>o.value&&o.textContent.toLowerCase().includes(title.toLowerCase()));
-  if(!match){status.textContent='Staged song is not in approved broadcast music. Approve it for streaming first; staging alone does not grant broadcast permission.';return;}
-  picker.value=match.value;E('swrLiveMusicPlay')?.click();status.textContent='Starting approved staged song on LIVE audio…';
- };
+ E('swrPlayStagedSong').onclick=()=>action(async()=>{
+  const id=E('liveDJSelect')?.value;
+  if(!id||!round)throw Error('Select a pending song and press STAGE SONG first.');
+  await window.swrPlayPendingReviewLive(id);
+  status.textContent='🔴 Review song is playing LIVE. Open voting whenever ready.';
+ });
+ E('swrStopReviewSong').onclick=()=>action(async()=>{await window.swrStopReviewLive();});
+ E('swrResetReviewVotes').onclick=()=>action(async()=>{
+  const id=E('liveDJSelect')?.value;
+  if(!id)throw Error('Select a pending song first.');
+  if(!confirm('Reset votes by starting a new review round for this song?'))return;
+  const r=await db.rpc('live_stage_song',{p_song_id:id});if(r.error)throw r.error;
+  status.textContent='Fresh review round staged; voting is CLOSED.';
+ });
+ // Everyone, including listeners, checks the shared review activation setting.
+ async function refreshListenerReview(){
+  if(!db)return;
+  try{
+   const [m,b]=await Promise.all([db.rpc('swr_review_mode_status'),db.rpc('swr_battle_status')]);
+   if(m.error)return;
+   const battleState=typeof b.data==='string'?JSON.parse(b.data):b.data;
+   const viewer=E('swrPlayViewer');if(viewer)viewer.hidden=!(m.data===true)||!!battleState?.enabled;
+  }catch(e){console.warn('Review mode status:',e);}
+ }
+ setInterval(refreshListenerReview,2000);setTimeout(refreshListenerReview,350);
  // Battle commands are async, so the next poll verifies the server-confirmed state.
  setInterval(refresh,2000);
  db?.auth.onAuthStateChange(()=>setTimeout(refresh,400));
