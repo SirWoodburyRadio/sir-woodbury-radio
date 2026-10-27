@@ -1853,7 +1853,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const status=E('swrVotingModeStatus');
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
  let playMode=false;
- let battle=null,round=null,staff=false,working=false;
+ let battle=null,round=null,staff=false,working=false,noticeUntil=0;
  const mark=(yes,no,enabled)=>{yes.setAttribute('aria-pressed',String(!!enabled));no.setAttribute('aria-pressed',String(!enabled));};
  async function refresh(){
   if(working||!db)return;
@@ -1865,7 +1865,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    const [b,r,m]=await Promise.all([db.rpc('swr_battle_status'),db.rpc('live_current_round'),db.rpc('swr_review_mode_status')]);
    if(!b.error)battle=typeof b.data==='string'?JSON.parse(b.data):b.data;
    if(!r.error)round=(r.data||[])[0]||null;
-   if(!m.error)playMode=m.data===true;else {playMode=false;status.textContent='Review mode database error: '+m.error.message+' — run the review activation SQL.';}
+   if(!m.error)playMode=m.data===true;else {playMode=false;status.textContent='Review mode database error: '+m.error.message+' — run the review activation SQL.';noticeUntil=Date.now()+8000;}
    const battleEnabled=!!battle?.enabled;
    mark(battleOn,battleOff,battleEnabled);mark(playOn,playOff,playMode);
    if(review)review.hidden=!staff;
@@ -1876,19 +1876,19 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    const isOpen=selected==='battle'?!!battle?.voting_open:!!round&&round.state==='open';
    mark(voteOn,voteOff,isOpen);
    E('swrActiveVoteTitle').textContent='🗳️ 6. Voting — '+(selected==='battle'?'BATTLE ARENA':'PLAY IT OR GO AWAY');
-   voteOn.disabled=selected==='play'&&(!playMode||!round);
-   voteOff.disabled=selected==='play'&&!round;
-   status.textContent=selected==='battle'?(isOpen?'Battle voting is OPEN.':'Battle voting is CLOSED.'):
+   voteOn.disabled=false;
+   voteOff.disabled=false;
+   if(Date.now()>noticeUntil)status.textContent=selected==='battle'?(isOpen?'Battle voting is OPEN.':'Battle voting is CLOSED.'):
     !playMode?'Play It or Go Away is switched OFF.':!round?'Stage a song in the DJ window before opening voting.':isOpen?'Play It or Go Away voting is OPEN.':'Play It or Go Away voting is CLOSED.';
   }catch(e){status.textContent='Could not check voting status: '+e.message;}
  }
- async function action(fn){if(working||!staff)return;working=true;status.textContent='Saving…';try{await fn();}catch(e){status.textContent='Could not change setting: '+e.message;}finally{working=false;setTimeout(refresh,250);}}
+ async function action(fn){if(working)return;if(!staff){status.textContent='Owner authorization not loaded. Sign in as owner and try again.';return;}working=true;status.textContent='Saving…';try{await fn();}catch(e){status.textContent='Could not change setting: '+e.message;noticeUntil=Date.now()+8000;console.error('SWR review control:',e);}finally{working=false;setTimeout(refresh,1400);}}
  battleOn.onclick=()=>action(async()=>{if(!battle?.enabled)E('swrBattleToggle')?.click();});
  battleOff.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleToggle')?.click();});
  playOn.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:true});if(r.error)throw r.error;playMode=true;mark(playOn,playOff,true);});
- playOff.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:false});if(r.error)throw r.error;playMode=false;mark(playOn,playOff,false);if(round?.state==='open')E('liveCloseVote')?.click();});
- voteOn.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'open'});if(r.error)throw r.error;}else if(playMode&&round)E('liveOpenVote')?.click();});
- voteOff.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'close'});if(r.error)throw r.error;}else if(round)E('liveCloseVote')?.click();});
+ playOff.onclick=()=>action(async()=>{const r=await db.rpc('swr_review_mode_set',{p_enabled:false});if(r.error)throw r.error;playMode=false;mark(playOn,playOff,false);if(round?.state==='open'){const v=await db.rpc('live_set_vote_state',{p_state:'closed'});if(v.error)throw v.error;}});
+ voteOn.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'open'});if(r.error)throw r.error;}else{if(!playMode)throw Error('Turn PLAY IT OR GO AWAY ON first.');if(!round)throw Error('Stage a review song first.');const r=await db.rpc('live_set_vote_state',{p_state:'open'});if(r.error)throw r.error;status.textContent='Review voting is OPEN.';}});
+ voteOff.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'close'});if(r.error)throw r.error;}else{if(!round)throw Error('Stage a review song first.');const r=await db.rpc('live_set_vote_state',{p_state:'closed'});if(r.error)throw r.error;status.textContent='Review voting is CLOSED.';}});
  E('swrPlayStagedSong').onclick=()=>action(async()=>{
   const id=E('liveDJSelect')?.value;
   if(!id||!round)throw Error('Select a pending song and press STAGE SONG first.');
