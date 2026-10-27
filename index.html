@@ -57,7 +57,7 @@ html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active)
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastBox>h2,
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastBox>p:first-of-type{display:none!important}
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #live>.hero,
-html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #live>.panel:not(#swrLiveChat):not(#swrBroadcastBox){display:none!important}
+html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #live>.panel:not(#swrLiveChat):not(#swrBroadcastBox):not(#swrBattleViewer){display:none!important}
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastListen,
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastStart,
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastStop{display:none!important}
@@ -1720,7 +1720,8 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  // Keep the viewer in the LIVE screen, above the ordinary song-approval voting panel.
  const dj=el('liveDJPanel');live.insertBefore(viewer,dj||null);
  // The owner panel is in the same LIVE owner menu; never displayed to listeners.
- live.insertBefore(owner,viewer);
+ const broadcastControls=el('swrBroadcastBox');
+ if(broadcastControls)broadcastControls.appendChild(owner);else live.insertBefore(owner,viewer);
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
  let state=null,user=null,isOwner=false,myVote=null,loading=false,firstLoad=true,hasBackend=true;
  const note=(id,t)=>{el(id).textContent=t;};
@@ -1770,7 +1771,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  }
  async function command(action,extra={}){
   if(!isOwner)return;
-  try{note('swrBattleOwnerStatus','Saving…');await rpc('swr_battle_control',{p_action:action,p_contender_1:extra.one??null,p_contender_2:extra.two??null});await refresh();}
+  try{note('swrBattleOwnerStatus','Saving…');await rpc('swr_battle_control',{p_action:action,p_contender_1:extra.one??null,p_contender_2:extra.two??null});loading=false;await refresh();}
   catch(e){note('swrBattleOwnerStatus','Could not update battle: '+e.message);}
  }
  el('swrBattleToggle').onclick=()=>command(state?.enabled?'off':'on');
