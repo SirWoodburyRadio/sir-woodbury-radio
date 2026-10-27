@@ -1478,9 +1478,15 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
        await prepareMixer();
        // Clear previous broadcast chat once, before listeners receive the LIVE track.
        // The SQL function permits this operation only to authorized station staff.
-       const {error:chatResetError}=await db.rpc('swr_reset_live_chat');
-       if(chatResetError)throw Error('Chat reset unavailable: '+chatResetError.message+' — install the companion SQL before going LIVE.');
-       window.dispatchEvent(new CustomEvent('swr-chat-reset'));
+       // Chat maintenance must never prevent a working microphone/music broadcast.
+       try {
+         const {error:chatResetError}=await db.rpc('swr_reset_live_chat');
+         if(chatResetError)throw chatResetError;
+         window.dispatchEvent(new CustomEvent('swr-chat-reset'));
+       } catch(chatError) {
+         console.warn('Sir Woodbury chat reset at broadcast start failed; audio will continue:',chatError);
+         const chatNotice=document.getElementById('swrChatStatus');if(chatNotice)chatNotice.textContent='Chat reset failed: '+(chatError?.message||String(chatError));
+       }
        mixedPublication=await r.localParticipant.publishTrack(mixDestination.stream.getAudioTracks()[0],{name:'sir-woodbury-mixed-audio',source:window.LivekitClient.Track.Source.Microphone});
      }catch(micError){throw Error('Broadcast mixer failed: '+micError.message+' — Open the station on HTTPS and allow microphone access.');}
      status.textContent='🔴 YOUR MIXED MICROPHONE + MUSIC STREAM IS LIVE.';updateLiveNav();
@@ -1645,6 +1651,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  }
  form.addEventListener('submit',async e=>{
   e.preventDefault();if(!db)return;
+  if(!document.documentElement.classList.contains('swr-broadcast-active')){status.textContent='Chat is available only during LIVE broadcasts.';return;}
   const msg=input.value.trim();if(!msg)return;
   const button=form.querySelector('button');button.disabled=true;
   try{
