@@ -64,6 +64,19 @@ html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active)
 html:not(.swr-broadcast-active) #swrReturnToLive{display:none!important}
 #swrReturnToLive{display:none;margin:14px 0;background:#aa202a;border:2px solid #f06b74;font-weight:850;font-size:18px;width:100%}
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#home.active) #swrReturnToLive{display:block!important}
+</style><style id="swr-battle-css">
+#swrBattleViewer[hidden],#swrBattleOwner[hidden]{display:none!important}
+#swrBattleViewer{border:2px solid #c93640;background:linear-gradient(140deg,#39141b,#17161d);text-align:center}
+.swr-battle-scores{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}
+.swr-battle-side{background:#17141a;border:1px solid #69343b;border-radius:14px;padding:16px 8px;min-width:0;overflow-wrap:anywhere}
+.swr-battle-number{font-size:clamp(34px,7vw,60px);font-weight:950;line-height:1.1}
+.swr-battle-side button{width:100%;margin-top:10px}
+.swr-battle-bar{display:flex;overflow:hidden;height:14px;border-radius:30px;background:#38323b;margin:12px 0}
+.swr-battle-bar>span:first-child{background:#d43d45}.swr-battle-bar>span:last-child{background:#487fcd}
+#swrBattleOwner{border:2px solid #93414b}
+#swrBattleOwner input{margin:5px 0 10px}
+#swrBattleOwner button{margin:4px}
+@media(max-width:480px){.swr-battle-side{padding:12px 6px}.swr-battle-side button{padding:10px 4px;font-size:13px}}
 </style></head><body><header><div class="logo"><div class="mark">BW</div><div><div class="brand">SIR WOODBURY RADIO</div><div class="sub">INDEPENDENT MUSIC • NO BOUNDARIES</div></div></div><div class="top-tools"><span class="pill">STUDIO FOUR</span><div id="liveCountdown" class="countdown">📻 NEXT LIVE: NOT SCHEDULED</div></div></header><nav><button data-tab="home" class="active">🏠 Main</button><button data-tab="radio">📻 Radio</button><button data-tab="discover">🎵 Discover</button><button data-tab="live">🔴 LIVE</button><button data-tab="studio">🎙️ My Studio</button><button data-tab="submit">📤 Submit Music</button><button data-tab="charts">🏆 Vote / Top 20</button><button data-tab="account">👤 Account</button><button data-tab="admin">🛡️ Review</button></nav><main><section id="home" class="active"><button id="swrReturnToLive" type="button">🔴 RETURN TO LIVE BROADCAST</button>
 <div class="hero"><div class="eyebrow">SIR WOODBURY RADIO • THIS WEEK</div>
 <h1>Your Top 20<br>Votes This Week</h1>
@@ -1687,4 +1700,91 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  setInterval(refresh,3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});refresh();
 })();
 </script>
-</body></html>
+<script id="swr-battle-mode-v1">
+(()=>{
+ 'use strict';
+ const el=id=>document.getElementById(id);
+ const live=el('live');if(!live)return;
+ const owner=document.createElement('div');owner.id='swrBattleOwner';owner.className='panel';owner.hidden=true;
+ owner.innerHTML=`<h2>⚔️ BATTLE MODE — OWNER ONLY</h2><p class="muted">Start a battle any time during your LIVE broadcast. Music, microphone and chat keep running.</p>
+ <button type="button" class="primary" id="swrBattleToggle">⚔️ ACTIVATE BATTLE</button>
+ <div id="swrBattleSetup" hidden><div class="grid"><div><label for="swrBattleName1">Contender 1 (song, artist or genre)</label><input id="swrBattleName1" maxlength="100" value="SONG 1"></div><div><label for="swrBattleName2">Contender 2</label><input id="swrBattleName2" maxlength="100" value="SONG 2"></div></div>
+ <button type="button" id="swrBattleSetNames">Update matchup</button><div class="row"><button type="button" class="primary" id="swrBattleOpen">🗳️ OPEN VOTING</button><button type="button" id="swrBattleClose">🔒 CLOSE VOTING</button><button type="button" id="swrBattleReset">🔄 RESET & NEW ROUND</button></div></div>
+ <p class="muted" id="swrBattleOwnerStatus" role="status">Checking Battle Mode…</p>`;
+ const viewer=document.createElement('div');viewer.id='swrBattleViewer';viewer.className='panel';viewer.hidden=true;
+ viewer.innerHTML=`<div class="eyebrow">⚔️ SIR WOODBURY LIVE BATTLE ⚔️</div><h2 id="swrBattleHeading">BATTLE ARENA</h2><span class="pill" id="swrBattleBadge">WAITING FOR DJ</span>
+ <div class="swr-battle-scores"><div class="swr-battle-side"><strong id="swrBattleLabel1">SONG 1</strong><div class="swr-battle-number" id="swrBattleCount1">0</div><small id="swrBattlePct1">0%</small><button id="swrBattleVote1" type="button" disabled>🗳️ VOTE 1</button></div>
+ <div class="swr-battle-side"><strong id="swrBattleLabel2">SONG 2</strong><div class="swr-battle-number" id="swrBattleCount2">0</div><small id="swrBattlePct2">0%</small><button id="swrBattleVote2" type="button" disabled>🗳️ VOTE 2</button></div></div>
+ <div class="swr-battle-bar"><span id="swrBattleBar1" style="width:50%"></span><span id="swrBattleBar2" style="width:50%"></span></div>
+ <p id="swrBattleTotal" class="muted">0 total votes</p><p id="swrBattleMessage" class="muted" role="status">Voting opens when the DJ says so.</p>`;
+ // Keep the viewer in the LIVE screen, above the ordinary song-approval voting panel.
+ const dj=el('liveDJPanel');live.insertBefore(viewer,dj||null);
+ // The owner panel is in the same LIVE owner menu; never displayed to listeners.
+ live.insertBefore(owner,viewer);
+ const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
+ let state=null,user=null,isOwner=false,myVote=null,loading=false,firstLoad=true,hasBackend=true;
+ const note=(id,t)=>{el(id).textContent=t;};
+ const rpc=async(name,args={})=>{if(!db)throw Error('Supabase is unavailable.');const {data,error}=await db.rpc(name,args);if(error)throw error;return data;};
+ function render(){
+  const liveOn=document.documentElement.classList.contains('swr-broadcast-active');
+  owner.hidden=!isOwner;viewer.hidden=!state?.enabled||(!liveOn&&!isOwner);
+  el('swrBattleSetup').hidden=!state?.enabled;
+  el('swrBattleToggle').textContent=state?.enabled?'⛔ TURN BATTLE OFF':'⚔️ ACTIVATE BATTLE';
+  if(!state)return;
+  const one=Number(state.votes_1||0),two=Number(state.votes_2||0),total=one+two;
+  const pct=total?Math.round(100*one/total):50;
+  note('swrBattleLabel1',state.contender_1||'SONG 1');note('swrBattleLabel2',state.contender_2||'SONG 2');
+  note('swrBattleCount1',String(one));note('swrBattleCount2',String(two));
+  note('swrBattlePct1',total?`${pct}%`:'0%');note('swrBattlePct2',total?`${100-pct}%`:'0%');
+  el('swrBattleBar1').style.width=pct+'%';el('swrBattleBar2').style.width=(100-pct)+'%';
+  note('swrBattleTotal',total+' total vote'+(total===1?'':'s'));
+  note('swrBattleBadge',state.voting_open?'🟢 VOTING OPEN':'🔒 VOTING CLOSED');
+  const allowed=!!user&&!isOwner&&state.enabled&&state.voting_open&&myVote===null&&liveOn;
+  for(const n of [1,2]){el('swrBattleVote'+n).disabled=!allowed;el('swrBattleVote'+n).textContent=myVote===n?'✓ YOUR VOTE':'🗳️ VOTE '+n;}
+  note('swrBattleMessage',myVote!==null?'Your vote is counted for this round.':state.voting_open?'Vote for your favorite! One vote per signed-in listener per round.':'Waiting for the DJ to open voting.');
+ }
+ async function refresh(){if(loading||!db)return;loading=true;
+  try{
+   const {data:{user:u}}=await db.auth.getUser();user=u||null;
+   if(!user){state=null;isOwner=false;myVote=null;render();return;}
+   const {data:profile,error:pe}=await db.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();if(pe)throw pe;
+   isOwner=profile?.role==='owner'||(profile?.role==='admin'&&profile.admin_enabled===true);
+   const result=await rpc('swr_battle_status');
+   if(!result)throw Error('Battle Mode database setup is required.');
+   const next=typeof result==='string'?JSON.parse(result):result;
+   const oldRound=state?.round_id;
+   state=next;
+   if(firstLoad||oldRound!==state.round_id){
+    myVote=null;
+    const {data:v,error:ve}=await db.from('swr_battle_votes').select('choice').eq('round_id',state.round_id).eq('user_id',user.id).maybeSingle();
+    if(!ve&&v)myVote=Number(v.choice);
+    firstLoad=false;
+   }
+   if(isOwner){
+    if(document.activeElement!==el('swrBattleName1'))el('swrBattleName1').value=state.contender_1||'SONG 1';
+    if(document.activeElement!==el('swrBattleName2'))el('swrBattleName2').value=state.contender_2||'SONG 2';
+   }
+   hasBackend=true;note('swrBattleOwnerStatus',state.enabled?'Battle Mode active. Broadcast audio stays on.':'Battle Mode off. Ready whenever you are.');render();
+  }catch(e){hasBackend=false;note('swrBattleOwnerStatus','Battle Mode setup/connection: '+e.message);if(isOwner)owner.hidden=false;console.warn('Battle Mode',e);}
+  finally{loading=false;}
+ }
+ async function command(action,extra={}){
+  if(!isOwner)return;
+  try{note('swrBattleOwnerStatus','Saving…');await rpc('swr_battle_control',{p_action:action,p_contender_1:extra.one??null,p_contender_2:extra.two??null});await refresh();}
+  catch(e){note('swrBattleOwnerStatus','Could not update battle: '+e.message);}
+ }
+ el('swrBattleToggle').onclick=()=>command(state?.enabled?'off':'on');
+ el('swrBattleOpen').onclick=()=>command('open');el('swrBattleClose').onclick=()=>command('close');
+ el('swrBattleSetNames').onclick=()=>command('names',{one:el('swrBattleName1').value.trim()||'SONG 1',two:el('swrBattleName2').value.trim()||'SONG 2'});
+ el('swrBattleReset').onclick=()=>{if(confirm('Start a NEW battle round? The scoreboard will return to zero and voting will close.'))command('reset');};
+ for(const n of [1,2])el('swrBattleVote'+n).onclick=async()=>{
+  if(!state?.enabled||!state.voting_open||myVote!==null)return;
+  el('swrBattleVote1').disabled=el('swrBattleVote2').disabled=true;
+  try{await rpc('swr_battle_cast_vote',{p_round_id:state.round_id,p_choice:n});myVote=n;await refresh();}
+  catch(e){note('swrBattleMessage','Vote not accepted: '+e.message);await refresh();}
+ };
+ db?.auth.onAuthStateChange(()=>{firstLoad=true;setTimeout(refresh,100);});
+ // Polling means all connected viewers update without page reload; no extra realtime configuration needed.
+ setInterval(refresh,1800);setTimeout(refresh,500);
+})();
+</script></body></html>
