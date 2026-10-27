@@ -57,7 +57,7 @@ html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active)
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastBox>h2,
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastBox>p:first-of-type{display:none!important}
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #live>.hero,
-html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #live>.panel:not(#swrLiveChat):not(#swrBroadcastBox):not(#swrBattleViewer){display:none!important}
+html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #live>.panel:not(#swrLiveChat):not(#swrBroadcastBox):not(#swrBattleViewer):not(#swrPlayViewer){display:none!important}
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastListen,
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastStart,
 html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) #swrBroadcastStop{display:none!important}
@@ -1097,7 +1097,7 @@ updatePlaybackUI();
 </script>
 <style>nav button[hidden], #liveDJPanel[hidden]{display:none!important} body:not(.swr-review-staff) nav button[data-tab="admin"], body:not(.swr-studio-staff) nav button[data-tab="studio"]{display:none!important}</style>
 <style>
-#live > .hero, #live > .panel:not(#liveDJPanel):not(#liveOwnerIntro):not(#swrBattleViewer):not(#swrOwnerConsole):not(#swrSimpleDJ):not(#swrLiveChat):not(#swrBroadcastBox){display:none!important}
+#live > .hero, #live > .panel:not(#liveDJPanel):not(#liveOwnerIntro):not(#swrBattleViewer):not(#swrOwnerConsole):not(#swrSimpleDJ):not(#swrLiveChat):not(#swrBroadcastBox):not(#swrPlayViewer){display:none!important}
 nav button[data-tab="studio"][hidden]{display:none!important}
 #guestCameraPlan{border-left:3px solid #e13b3b;margin-top:16px;padding:12px;background:#281b21;border-radius:9px}
 </style>
@@ -1791,6 +1791,11 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
 </script>
 <style id="swr-owner-console-style">
 #swrOwnerConsole[hidden],#swrBattleOwner[hidden],#swrBattleViewer[hidden]{display:none!important}
+#swrSimpleDJ,#liveOwnerIntro{display:none!important}
+#live > #swrPlayViewer:not([hidden]){display:block!important;border:2px solid #a9434c;background:#25191e}
+#swrPlayViewer[hidden],#swrPlayReviewSlot[hidden],#swrPlayStagedSong[hidden]{display:none!important}
+#swrPlayReviewSlot #liveDJPanel{display:block!important;border:0;background:transparent;padding:0;box-shadow:none}
+#swrPlayReviewSlot #liveDJPanel>h2,#swrPlayReviewSlot #liveDJPanel>p:first-of-type,#swrPlayReviewSlot #liveDJPanel>p:last-of-type{display:none!important}
 #swrOwnerConsole{border:2px solid #9b404a;background:#21191f}
 .swr-console-card{background:#151419;border:1px solid #66414b;border-radius:14px;padding:15px;margin:12px 0}
 .swr-console-card h3{margin:0 0 10px;font-size:19px}
@@ -1813,7 +1818,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const consolePanel=document.createElement('div');consolePanel.id='swrOwnerConsole';consolePanel.className='panel';consolePanel.hidden=true;
  consolePanel.innerHTML=`<h2>🎛️ LIVE Show Modes & Voting</h2>
  <div class="swr-console-card" id="swrBattleActivateCard"><h3>⚔️ 4. Battle Arena Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Battle arena activation"><button type="button" class="swr-on" id="swrBattleModeOn">BATTLE ON</button><button type="button" class="swr-off" id="swrBattleModeOff">BATTLE OFF</button></div><div id="swrBattleOwnerSlot"></div></div>
- <div class="swr-console-card"><h3>🎵 5. PLAY IT OR GO AWAY Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Play It or Go Away activation"><button type="button" class="swr-on" id="swrPlayModeOn">ON</button><button type="button" class="swr-off" id="swrPlayModeOff">OFF</button></div><p class="muted">Turn ON to use the song review stage. Choose and stage a song in the private DJ window. Turning OFF closes its voting.</p></div>
+ <div class="swr-console-card"><h3>🎵 5. PLAY IT OR GO AWAY Activation</h3><div class="swr-toggle-pair" role="group" aria-label="Play It or Go Away activation"><button type="button" class="swr-on" id="swrPlayModeOn">ON</button><button type="button" class="swr-off" id="swrPlayModeOff">OFF</button></div><p class="muted">Turn ON to use the song review stage. Choose and stage a song in the private DJ window. Turning OFF closes its voting.</p><div id="swrPlayReviewSlot"></div><button type="button" id="swrPlayStagedSong" class="primary">▶ PLAY STAGED SONG ON AIR</button><p class="muted" id="swrPlayStageHelp">Stage the review song above. To broadcast it, it must be approved and available in LIVE DJ Music.</p></div>
  <div class="swr-console-card"><h3 id="swrActiveVoteTitle">🗳️ 6. Voting — PLAY IT OR GO AWAY</h3><div class="swr-toggle-pair" role="group" aria-label="Voting on or off"><button type="button" class="swr-on" id="swrVotingOn">VOTING ON</button><button type="button" class="swr-off" id="swrVotingOff">VOTING OFF</button></div><p class="muted" id="swrVotingModeStatus">Checking voting status…</p></div>`;
  const ownerBattle=E('swrBattleOwner');
  const chat=E('swrLiveChat');
@@ -1822,15 +1827,19 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const dj=E('swrSimpleDJ'),review=E('liveDJPanel');
  if(broadcast)live.insertBefore(broadcast,live.firstChild);
  let anchor=broadcast;
- for(const panel of [dj,review,chat])if(panel){if(anchor)anchor.after(panel);else live.prepend(panel);anchor=panel;}
+ for(const panel of [chat])if(panel){if(anchor)anchor.after(panel);else live.prepend(panel);anchor=panel;}
  if(anchor)anchor.after(consolePanel);else live.prepend(consolePanel);
+ if(review)E('swrPlayReviewSlot').append(review);
  if(ownerBattle)E('swrBattleOwnerSlot').append(ownerBattle);
+ const originalVoting=E('livePlay')?.closest('.panel');
+ if(originalVoting){originalVoting.id='swrPlayViewer';live.append(originalVoting);}
+ const originalHero=live.querySelector('.hero');if(originalHero)originalHero.style.display='none';
  const battleOn=E('swrBattleModeOn'),battleOff=E('swrBattleModeOff');
  const playOn=E('swrPlayModeOn'),playOff=E('swrPlayModeOff');
  const voteOn=E('swrVotingOn'),voteOff=E('swrVotingOff');
  const status=E('swrVotingModeStatus');
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true,autoRefreshToken:true}});
- let playMode=localStorage.getItem('swr-play-go-owner-mode')!=='off';
+ let playMode=localStorage.getItem('swr-play-go-owner-mode')==='on';
  let battle=null,round=null,staff=false,working=false;
  const mark=(yes,no,enabled)=>{yes.setAttribute('aria-pressed',String(!!enabled));no.setAttribute('aria-pressed',String(!enabled));};
  async function refresh(){
@@ -1845,6 +1854,10 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    if(!r.error)round=(r.data||[])[0]||null;
    const battleEnabled=!!battle?.enabled;
    mark(battleOn,battleOff,battleEnabled);mark(playOn,playOff,playMode);
+   if(review)review.hidden=!staff||!playMode;
+   const reviewSlot=E('swrPlayReviewSlot');if(reviewSlot)reviewSlot.hidden=!playMode;
+   E('swrPlayStagedSong').hidden=!playMode;
+   const viewer=E('swrPlayViewer');if(viewer)viewer.hidden=!playMode||battleEnabled;
    const selected=battleEnabled?'battle':'play';
    const isOpen=selected==='battle'?!!battle?.voting_open:!!round&&round.state==='open';
    mark(voteOn,voteOff,isOpen);
@@ -1860,8 +1873,15 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  battleOff.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleToggle')?.click();});
  playOn.onclick=()=>{playMode=true;localStorage.setItem('swr-play-go-owner-mode','on');refresh();};
  playOff.onclick=()=>action(async()=>{playMode=false;localStorage.setItem('swr-play-go-owner-mode','off');if(round?.state==='open')E('liveCloseVote')?.click();});
- voteOn.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleOpen')?.click();else if(playMode&&round)E('liveOpenVote')?.click();});
- voteOff.onclick=()=>action(async()=>{if(battle?.enabled)E('swrBattleClose')?.click();else if(round)E('liveCloseVote')?.click();});
+ voteOn.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'open'});if(r.error)throw r.error;}else if(playMode&&round)E('liveOpenVote')?.click();});
+ voteOff.onclick=()=>action(async()=>{if(battle?.enabled){const r=await db.rpc('swr_battle_control',{p_action:'close'});if(r.error)throw r.error;}else if(round)E('liveCloseVote')?.click();});
+ E('swrPlayStagedSong').onclick=()=>{
+  const title=round?.title;const picker=E('swrLiveMusicPick');
+  if(!title||!picker){status.textContent='Stage a song first and start your real broadcast.';return;}
+  const match=Array.from(picker.options).find(o=>o.value&&o.textContent.toLowerCase().includes(title.toLowerCase()));
+  if(!match){status.textContent='Staged song is not in approved broadcast music. Approve it for streaming first; staging alone does not grant broadcast permission.';return;}
+  picker.value=match.value;E('swrLiveMusicPlay')?.click();status.textContent='Starting approved staged song on LIVE audio…';
+ };
  // Battle commands are async, so the next poll verifies the server-confirmed state.
  setInterval(refresh,2000);
  db?.auth.onAuthStateChange(()=>setTimeout(refresh,400));
