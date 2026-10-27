@@ -46,10 +46,11 @@
 #voteArtistsPage #voteTopPanel,#voteArtistsPage #voteOtherPanel{scroll-margin-top:155px}
 @media(max-width:440px){#voteArtistsPage .vote-switch button{font-size:14px;padding:12px 5px}}
 </style>
-<style id="swr-live-voting-only-on-live-tab">#radio #radioLiveVote{display:none!important}</style><style id="swr-auth-wall-css">html:not(.swr-authenticated) nav button:not([data-tab="account"]),html:not(.swr-authenticated) main section:not(#account){display:none!important}html:not(.swr-authenticated) nav button[data-tab="account"]{display:inline-block!important}#swr-auth-welcome{padding:18px;border:1px solid #8e353c;border-radius:14px;background:#281b20;margin:16px 0}html.swr-authenticated #swr-auth-welcome{display:none!important}</style><style id="swr-listener-live-only-nav">html.swr-listener-live-only nav button:not([data-tab="live"]){display:none!important}html.swr-listener-live-only nav{justify-content:center}html.swr-listener-live-only nav button[data-tab="live"]{display:inline-block!important}</style><style id="swr-broadcast-visibility-fix">
+<style id="swr-live-voting-only-on-live-tab">#radio #radioLiveVote{display:none!important}</style><style id="swr-auth-wall-css">html:not(.swr-authenticated) nav button:not([data-tab="account"]),html:not(.swr-authenticated) main section:not(#account){display:none!important}html:not(.swr-authenticated) nav button[data-tab="account"]{display:inline-block!important}#swr-auth-welcome{padding:18px;border:1px solid #8e353c;border-radius:14px;background:#281b20;margin:16px 0}html.swr-authenticated #swr-auth-welcome{display:none!important}</style><style id="swr-listener-live-only-nav">/* All station tabs remain available while a broadcast is live. */</style><style id="swr-broadcast-visibility-fix">
 html.swr-authenticated:not(.swr-is-owner):not(.swr-broadcast-active) nav button[data-tab="live"]{display:none!important}
 html:not(.swr-broadcast-active) #swrLiveChat{display:none!important}
 html.swr-authenticated.swr-broadcast-active nav button[data-tab="live"]{display:inline-block!important}
+html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#live.active) nav button[data-tab="live"]{display:none!important}
 </style></head><body><header><div class="logo"><div class="mark">BW</div><div><div class="brand">SIR WOODBURY RADIO</div><div class="sub">INDEPENDENT MUSIC • NO BOUNDARIES</div></div></div><div class="top-tools"><span class="pill">STUDIO FOUR</span><div id="liveCountdown" class="countdown">📻 NEXT LIVE: NOT SCHEDULED</div></div></header><nav><button data-tab="home" class="active">🏠 Main</button><button data-tab="radio">📻 Radio</button><button data-tab="discover">🎵 Discover</button><button data-tab="live">🔴 LIVE</button><button data-tab="studio">🎙️ My Studio</button><button data-tab="submit">📤 Submit Music</button><button data-tab="charts">🏆 Vote / Top 20</button><button data-tab="account">👤 Account</button><button data-tab="admin">🛡️ Review</button></nav><main><section id="home" class="active">
 <div class="hero"><div class="eyebrow">SIR WOODBURY RADIO • THIS WEEK</div>
 <h1>Your Top 20<br>Votes This Week</h1>
@@ -1398,31 +1399,22 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const db=window.supabase?.createClient(BASE,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
  let room=null, host=false, busy=false, autoListener=false, broadcastDetected=false, manuallyLeft=false, listenerConnectedAt=0, lastReconnectAt=0;
  const ownerOnlyIds=['liveOwnerIntro','liveDJPanel'];
- // Live broadcast takes over the listener interface, but never locks out the owner.
- const liveNavGuard=e=>{if(!broadcastDetected||host)return;const b=e.target.closest('nav button,[data-go]');if(b && (b.dataset.tab||b.dataset.go)!=='live'){e.preventDefault();e.stopImmediatePropagation();switchTab('live');}};
- document.addEventListener('click',liveNavGuard,true);
- // Guard programmatic tab changes too: older page handlers may hold their own
- // navigation callbacks, and some dynamically created buttons bypass nav guards.
+ // Let listeners browse the station during LIVE and return using the LIVE tab.
+ // Automatic entry still happens once when the broadcast begins.
  const swrUnrestrictedSwitch=switchTab;
  switchTab=function(id){
    if(id==='live'&&!host&&!broadcastDetected)id='home';
-   if(broadcastDetected&&!host&&id!=='live'&&id!=='account')id='live';
    return swrUnrestrictedSwitch(id);
  };
- // Keep the listener's LIVE view in front even if an earlier handler changes
- // section classes directly. This is presentation only; server access remains RLS.
- const swrLiveViewObserver=new MutationObserver(()=>{
-   if(!broadcastDetected||host)return;
-   const livePage=$('live');
-   if(!livePage?.classList.contains('active')){
-     document.querySelectorAll('main section.active').forEach(s=>{if(s!==livePage)s.classList.remove('active');});
-     livePage?.classList.add('active');
-   }
-   document.querySelectorAll('nav button[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab==='live'));
- });
- swrLiveViewObserver.observe(document.querySelector('main'),{subtree:true,attributes:true,attributeFilter:['class']});
-
- function updateLiveNav(){document.documentElement.classList.toggle("swr-is-owner",host);document.documentElement.classList.toggle("swr-broadcast-active",broadcastDetected||(host&&!!room));const listenerLive=broadcastDetected&&!host;document.documentElement.classList.toggle('swr-listener-live-only',listenerLive);document.querySelectorAll('nav button').forEach(b=>{const locked=b.dataset.tab!=='live'&&listenerLive;b.disabled=locked;b.setAttribute('aria-disabled',String(locked));});}
+ function updateLiveNav(){
+   document.documentElement.classList.toggle('swr-is-owner',host);
+   document.documentElement.classList.toggle('swr-broadcast-active',broadcastDetected||(host&&!!room));
+   document.documentElement.classList.remove('swr-listener-live-only');
+   document.querySelectorAll('nav button').forEach(b=>{
+     b.disabled=false;
+     b.setAttribute('aria-disabled','false');
+   });
+ }
  async function enableSound(){if(!room)return;try{if(room.startAudio)await room.startAudio();const audios=[...$('swrRemoteAudio').querySelectorAll('audio')];for(const a of audios){a.muted=listenerMuted;await a.play();}soundButton.hidden=true;status.textContent='🔴 LIVE NOW — audio enabled.';}catch(e){soundButton.hidden=false;status.textContent='🔴 LIVE connected. Tap ENABLE LIVE SOUND to hear audio.';}}
  soundButton.onclick=enableSound;
 
@@ -1498,7 +1490,23 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   }catch(e){const message='LIVE connection error: '+(e?.message||String(e));if(room)await disconnect(message);else{await releaseMixer();status.textContent=message;}console.error('Sir Woodbury LIVE connection',e);}
   finally{busy=false;}
  }
- start.onclick=()=>connect(true);stop.onclick=disconnect;listen.onclick=()=>{manuallyLeft=false;connect(false);};leave.onclick=async()=>{manuallyLeft=true;onBroadcastEnded();await disconnect();};
+ start.onclick=()=>connect(true);
+ stop.onclick=async()=>{
+   if(!host||!room)return;
+   stop.disabled=true;
+   try{
+     // End the broadcast first, then permanently clear this show's chat.
+     await disconnect('Broadcast ended. Clearing LIVE chat…');
+     const {error}=await db.rpc('swr_reset_live_chat');
+     if(error)throw error;
+     window.dispatchEvent(new CustomEvent('swr-chat-reset'));
+     status.textContent='Broadcast ended. LIVE chat permanently cleared.';
+   }catch(e){
+     status.textContent='Broadcast ended, but chat reset failed: '+(e?.message||String(e));
+     console.error('Sir Woodbury end-of-show chat reset',e);
+   }finally{stop.disabled=false;}
+ };
+ listen.onclick=()=>{manuallyLeft=false;connect(false);};leave.onclick=async()=>{manuallyLeft=true;onBroadcastEnded();await disconnect();};
  // Detect a broadcast while the listener is already on another tab.
  // Some browsers/providers do not deliver a late TrackPublished event reliably;
  // periodically renew an idle listener connection to pick up the new host.
