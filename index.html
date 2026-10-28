@@ -103,7 +103,7 @@ html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#home.active)
  <div class="panel" id="liveDJPanel" hidden><h2>🎙️ Private DJ voting controls</h2><p class="muted">First screen submissions in Review. Select a screened song here, then open voting when you say “VOTE NOW!”</p><label for="liveDJSelect">Pending song for live review</label><select id="liveDJSelect"><option value="">Select a song</option></select><div class="live-control"><button id="liveStageSong">🎵 Stage Song</button><button id="liveOpenVote" class="primary">🗳️ OPEN VOTING</button><button id="liveCloseVote">🔒 CLOSE VOTING</button></div><p id="liveDJStatus" class="muted"></p><p id="liveDJTally" class="muted">Results appear here.</p><p class="muted">This controls voting only. Actual live audio broadcasting is not yet connected.</p></div>
 </section>
 </main><div class="footer">© Sir Woodbury Radio • Studio Four prototype • Made for independent music</div><script>
-const $=id=>document.getElementById(id);let tracks=[],pending=[],index=-1,shuffle=false,stream=null,micEnabled=false;let playbackMode='station';const player=$('player');function switchTab(id){if(!document.documentElement.classList.contains('swr-authenticated')&&id!=='account')id='account';document.querySelectorAll('section').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));}document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>switchTab(b.dataset.go));function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function addSong(title,artist,genre,file){tracks.push({title,artist,genre,file,url:URL.createObjectURL(file)});saveRecord("tracks",{title,artist,genre,file});renderSongs();if(index<0)load(0,false);}function load(i,autoplay=true,mode='on-demand'){if(!document.documentElement.classList.contains('swr-authenticated'))return;if(!tracks.length)return;playbackMode=mode;index=(i+tracks.length)%tracks.length;const t=tracks[index];player.src=t.url;$('nowTitle').textContent=t.title;$('nowArtist').textContent=t.artist+' • '+t.genre;if(autoplay)player.play().catch(()=>{});}function next(){if(!tracks.length)return;let i=shuffle?Math.floor(Math.random()*tracks.length):(index+1)%tracks.length;load(i,true,'station');}player.addEventListener('ended',()=>{if(playbackMode==='station')next();else{playbackMode='on-demand';updatePlaybackUI();}});$('nextBtn').onclick=next;$('playBtn').onclick=()=>{if(!tracks.length){switchTab('studio');alert('Add an audio file to start your station.');return;}if(index<0)load(0,false,'station');else if(playbackMode!=='station'){next();return;}player.paused?player.play().catch(()=>{}):player.pause();};$('shuffleBtn').onclick=()=>{shuffle=!shuffle;$('shuffleBtn').textContent='🔀 Shuffle: '+(shuffle?'On':'Off')};function renderSongs(){let q=$('search').value.toLowerCase(),g=$('genre').value;let found=tracks.map((t,i)=>({...t,i})).filter(t=>(t.title+' '+t.artist+' '+t.genre).toLowerCase().includes(q)&&(!g||g===t.genre));$('trackList').innerHTML=found.length?found.map(t=>`<div class="track"><div class="cover">🎵</div><div class="grow"><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)} · ${escapeHtml(t.genre)}</small></div><button data-play="${t.i}">▶</button></div>`).join(''):'<p>No songs here yet. Add some in My Studio!</p>';$('trackList').querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>{load(Number(b.dataset.play),true,'on-demand');switchTab('radio')});}$('search').oninput=renderSongs;$('genre').onchange=renderSongs;renderSongs();$('addTrack').onclick=()=>{let file=$('addFile').files[0],title=$('addTitle').value.trim(),artist=$('addArtist').value.trim();if(!file||!title||!artist){$('addStatus').textContent='Please enter title, artist, and choose an audio file.';return;}addSong(title,artist,$('addGenre').value,file);$('addStatus').textContent='✓ Added to station rotation!';$('addFile').value='';$('addTitle').value='';};async function startDevices(){if(!navigator.mediaDevices?.getUserMedia){throw Error('Camera and mic need HTTPS or localhost in a supported browser.')}if(stream)stream.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({video:true,audio:micEnabled});$('camera').srcObject=stream;$('camera').classList.remove('hide');$('cameraPlaceholder').classList.add('hide');$('cameraBtn').textContent='Turn Camera Off';$('deviceStatus').textContent=micEnabled?'Camera and microphone preview active.':'Camera preview active; mic off.';}$('cameraBtn').onclick=async()=>{if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;$('camera').srcObject=null;$('camera').classList.add('hide');$('cameraPlaceholder').classList.remove('hide');$('cameraBtn').textContent='Turn Camera On';$('deviceStatus').textContent='Devices are off.';}else try{await startDevices()}catch(e){$('deviceStatus').textContent=e.message;}};$('micBtn').onclick=async()=>{micEnabled=!micEnabled;$('micBtn').textContent=micEnabled?'🎤 Mic Enabled':'🎤 Enable Mic';if(stream)try{await startDevices()}catch(e){$('deviceStatus').textContent=e.message;}else $('deviceStatus').textContent=micEnabled?'Mic requested; turn on camera to preview.':'Devices are off.';};$('previewShow').onclick=()=>{$('showBanner').textContent='🎙️ '+$('showTitle').value+' — '+($('guestName').value?'Featuring '+$('guestName').value:'Solo host')+' (preview, not broadcasting)';};// IndexedDB keeps uploaded demo audio on this device, even after refresh.
+const $=id=>document.getElementById(id);let tracks=[],pending=[],index=-1,shuffle=false,stream=null,micEnabled=false;let playbackMode='station';const player=$('player');function switchTab(id){if(!document.documentElement.classList.contains('swr-authenticated')&&id!=='account')id='account';document.querySelectorAll('section').forEach(s=>s.classList.toggle('active',s.id===id));document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));}document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));document.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>switchTab(b.dataset.go));function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}function addSong(title,artist,genre,file){tracks.push({title,artist,genre,file,url:URL.createObjectURL(file)});saveRecord("tracks",{title,artist,genre,file});renderSongs();if(index<0)load(0,false);}function load(i,autoplay=true,mode='on-demand'){if(!document.documentElement.classList.contains('swr-authenticated'))return;if(!tracks.length)return;playbackMode=mode;index=(i+tracks.length)%tracks.length;const t=tracks[index];player.src=t.url;$('nowTitle').textContent=t.title;$('nowArtist').textContent=t.artist+' • '+t.genre;if(autoplay)player.play().catch(()=>{});}function next(){if(!tracks.length)return;let i=shuffle?Math.floor(Math.random()*tracks.length):(index+1)%tracks.length;load(i,true,'station');}player.addEventListener('ended',()=>{if(playbackMode!=='station'){playbackMode='on-demand';updatePlaybackUI();}});$('nextBtn').onclick=next;$('playBtn').onclick=()=>{if(!tracks.length){switchTab('studio');alert('Add an audio file to start your station.');return;}if(index<0)load(0,false,'station');else if(playbackMode!=='station'){next();return;}player.paused?player.play().catch(()=>{}):player.pause();};$('shuffleBtn').onclick=()=>{shuffle=!shuffle;$('shuffleBtn').textContent='🔀 Shuffle: '+(shuffle?'On':'Off')};function renderSongs(){let q=$('search').value.toLowerCase(),g=$('genre').value;let found=tracks.map((t,i)=>({...t,i})).filter(t=>(t.title+' '+t.artist+' '+t.genre).toLowerCase().includes(q)&&(!g||g===t.genre));$('trackList').innerHTML=found.length?found.map(t=>`<div class="track"><div class="cover">🎵</div><div class="grow"><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.artist)} · ${escapeHtml(t.genre)}</small></div><button data-play="${t.i}">▶</button></div>`).join(''):'<p>No songs here yet. Add some in My Studio!</p>';$('trackList').querySelectorAll('[data-play]').forEach(b=>b.onclick=()=>{load(Number(b.dataset.play),true,'on-demand');switchTab('radio')});}$('search').oninput=renderSongs;$('genre').onchange=renderSongs;renderSongs();$('addTrack').onclick=()=>{let file=$('addFile').files[0],title=$('addTitle').value.trim(),artist=$('addArtist').value.trim();if(!file||!title||!artist){$('addStatus').textContent='Please enter title, artist, and choose an audio file.';return;}addSong(title,artist,$('addGenre').value,file);$('addStatus').textContent='✓ Added to station rotation!';$('addFile').value='';$('addTitle').value='';};async function startDevices(){if(!navigator.mediaDevices?.getUserMedia){throw Error('Camera and mic need HTTPS or localhost in a supported browser.')}if(stream)stream.getTracks().forEach(t=>t.stop());stream=await navigator.mediaDevices.getUserMedia({video:true,audio:micEnabled});$('camera').srcObject=stream;$('camera').classList.remove('hide');$('cameraPlaceholder').classList.add('hide');$('cameraBtn').textContent='Turn Camera Off';$('deviceStatus').textContent=micEnabled?'Camera and microphone preview active.':'Camera preview active; mic off.';}$('cameraBtn').onclick=async()=>{if(stream){stream.getTracks().forEach(t=>t.stop());stream=null;$('camera').srcObject=null;$('camera').classList.add('hide');$('cameraPlaceholder').classList.remove('hide');$('cameraBtn').textContent='Turn Camera On';$('deviceStatus').textContent='Devices are off.';}else try{await startDevices()}catch(e){$('deviceStatus').textContent=e.message;}};$('micBtn').onclick=async()=>{micEnabled=!micEnabled;$('micBtn').textContent=micEnabled?'🎤 Mic Enabled':'🎤 Enable Mic';if(stream)try{await startDevices()}catch(e){$('deviceStatus').textContent=e.message;}else $('deviceStatus').textContent=micEnabled?'Mic requested; turn on camera to preview.':'Devices are off.';};$('previewShow').onclick=()=>{$('showBanner').textContent='🎙️ '+$('showTitle').value+' — '+($('guestName').value?'Featuring '+$('guestName').value:'Solo host')+' (preview, not broadcasting)';};// IndexedDB keeps uploaded demo audio on this device, even after refresh.
 let db=null;
 function initDB(){return new Promise(resolve=>{if(!window.indexedDB){resolve();return;}let req=indexedDB.open('SirWoodburyStudioTwo',1);req.onupgradeneeded=()=>{let d=req.result;for(let name of ['tracks','pending'])if(!d.objectStoreNames.contains(name))d.createObjectStore(name,{keyPath:'id',autoIncrement:true});};req.onsuccess=()=>{db=req.result;resolve();};req.onerror=()=>resolve();});}
 function saveRecord(store,value){if(!db)return;try{db.transaction(store,'readwrite').objectStore(store).add(value);}catch(e){console.warn('Could not save locally',e);}}
@@ -916,49 +916,65 @@ updatePlaybackUI();
  const status=document.getElementById('catalogStatus');
  const radio=document.getElementById('radio');
  if(!audio||!status||!radio)return;
- let lastSong='', regularCount=0, lastArtist='', artistCursor=0, requested=false;
- const byArtist=new Map(), artistSongCursor=new Map();
- let artistNames=[];
- function key(t){return String(t.artist||'').trim().toLowerCase()}
+ let lastSong='', regularCount=0, lastArtist='', requested=false;
+ const LAST_KEY='swr-last-rotation-song-v1';
+ let bag=[], bagSignature='';
+ try{lastSong=localStorage.getItem(LAST_KEY)||'';}catch(e){}
+ function mix(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+ function songId(t){return String(t.id||[t.artist,t.title].join('::'));}
  function rebuild(){
-   byArtist.clear();
-   tracks.forEach((t,i)=>{if(t.in_rotation===false)return;const k=key(t);if(!byArtist.has(k))byArtist.set(k,[]);byArtist.get(k).push(i)});
-   artistNames=[...byArtist.keys()].sort();
+   const eligible=tracks.map((t,i)=>({t,i})).filter(x=>x.t.in_rotation!==false);
+   const signature=eligible.map(x=>songId(x.t)).sort().join('|');
+   if(signature!==bagSignature){bagSignature=signature;bag=[];}
+   return eligible;
  }
+ function fillBag(eligible){
+   // Shuffle the entire approved catalog once per cycle, balancing artists where possible.
+   const groups=new Map();
+   for(const x of mix([...eligible])){const k=String(x.t.artist||'').trim().toLowerCase();if(!groups.has(k))groups.set(k,[]);groups.get(k).push(x.i);}
+   const result=[];let previous=lastArtist;
+   while([...groups.values()].some(v=>v.length)){
+     const available=[...groups].filter(([,v])=>v.length);
+     const different=available.filter(([k])=>k!==previous);
+     const options=different.length?different:available;
+     const [artist,songs]=options[Math.floor(Math.random()*options.length)];
+     result.push(songs.pop());previous=artist;
+   }
+   if(result.length>1&&songId(tracks[result[0]])===lastSong){
+     const swap=result.findIndex((i,n)=>n>0&&songId(tracks[i])!==lastSong);
+     if(swap>0)[result[0],result[swap]]=[result[swap],result[0]];
+   }
+   bag=result;
+ }
+ 
  function choose(){
-   rebuild();if(!artistNames.length)return -1;
-   // Bonus plays: use chart tracks with actual positive shared vote totals only.
-   if(regularCount>=4){
+   const eligible=rebuild();if(!eligible.length)return -1;
+   if(!bag.length)fillBag(eligible);
+   // Keep the existing Top 20 bonus-play concept, but never let a bonus
+   // interrupt the first fresh shuffled cycle after sign-in.
+   if(regularCount>=4 && bag.length<eligible.length){
      regularCount=0;
      const rows=[...document.querySelectorAll('#voteArtistsPage .chart-entry, #chartList .chart-entry')];
      const ranked=[];
-     for(const r of rows){const m=r.textContent.match(/(\d+) votes?/i);if(!m||Number(m[1])<=0)continue;
+     for(const r of rows){
+       const m=r.textContent.match(/(\d+) votes?/i);if(!m||Number(m[1])<=0)continue;
        const title=r.querySelector('strong')?.textContent?.trim();
-       const ix=tracks.findIndex(t=>t.title===title);
-       if(ix>=0&&!ranked.includes(ix))ranked.push(ix);
+       const ix=eligible.find(x=>x.t.title===title)?.i;
+       if(ix!==undefined&&!ranked.includes(ix))ranked.push(ix);
      }
-     if(ranked.length){const choices=ranked.filter(i=>tracks[i].id!==lastSong);return (choices.length?choices:ranked)[Math.floor(Math.random()*(choices.length||ranked.length))]}
+     const options=ranked.filter(i=>songId(tracks[i])!==lastSong);
+     if(options.length)return options[Math.floor(Math.random()*options.length)];
    }
-   // Round-robin artists, round-robin each artist's own songs.
-   for(let step=0;step<artistNames.length;step++){
-     const artist=artistNames[(artistCursor+step)%artistNames.length];
-     if(artistNames.length>1&&artist===lastArtist)continue;
-     const songs=byArtist.get(artist),cursor=artistSongCursor.get(artist)||0;
-     const i=songs[cursor%songs.length];
-     artistSongCursor.set(artist,cursor+1);
-     artistCursor=(artistCursor+step+1)%artistNames.length;
-     lastArtist=artist;regularCount++;
-     return i;
-   }
-   const artist=artistNames[artistCursor%artistNames.length],songs=byArtist.get(artist),cursor=artistSongCursor.get(artist)||0;
-   artistSongCursor.set(artist,cursor+1);artistCursor=(artistCursor+1)%artistNames.length;regularCount++;
-   return songs[cursor%songs.length];
+   const i=bag.shift();regularCount++;
+   lastArtist=String(tracks[i].artist||'').trim().toLowerCase();
+   return i;
  }
  function playNext(){
    if(!tracks.length||demoIsLive)return;
    const i=choose();if(i<0)return;
    playbackMode='station';
-   lastSong=tracks[i].id||tracks[i].title;
+   lastSong=songId(tracks[i]);
+   try{localStorage.setItem(LAST_KEY,lastSong);}catch(e){}
    load(i,false,'station');
    audio.play().catch(e=>{
      const air=document.getElementById('airStatus');
@@ -1007,7 +1023,7 @@ updatePlaybackUI();
  };
  // A real sign-in tap is a permitted user gesture, but asynchronous audio loading
  // can still be blocked by Android Chrome. Never falsely show 'On Air'.
- document.getElementById('realSignIn')?.addEventListener('click',()=>{requested=true;setTimeout(tryStart,700)},false);
+ document.getElementById('realSignIn')?.addEventListener('click',()=>{requested=true;bag=[];regularCount=0;setTimeout(tryStart,700)},false);
  document.getElementById('realSignUp')?.addEventListener('click',()=>{requested=true;setTimeout(tryStart,700)},false);
  document.querySelector('[data-tab="radio"]')?.addEventListener('click',tryStart);
  setTimeout(tryStart,1400);
