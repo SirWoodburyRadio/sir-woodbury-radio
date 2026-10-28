@@ -1937,42 +1937,61 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
 })();
 </script>
 
-<!-- SWR approved-song play counting: independent of LIVE, Battle and review voting. -->
-<script id="swr-verified-play-count-v1">
+<!-- SWR intentional song listens: Discover, New Artists, Top 20 only. -->
+<script id="swr-intentional-play-count-v2">
 (()=>{
  'use strict';
  const audio=document.getElementById('player');
  if(!audio)return;
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true}});
  if(!db)return;
- let heard=0,previousTime=null,previousWall=null,attempted=false,token=0;
- function reset(){heard=0;previousTime=null;previousWall=null;attempted=false;token++;}
- audio.addEventListener('loadstart',reset);
- audio.addEventListener('seeking',()=>{previousTime=null;previousWall=null;});
- audio.addEventListener('pause',()=>{previousTime=null;previousWall=null;});
+ let pendingSelection=0, eligible=false, selectedSongId=null;
+ let heard=0, previousTime=null, previousWall=null, attempted=false, token=0;
+ const manualAreas=['discover','musicSwitchboard','artistListeningPage','voteArtistsPage','charts'];
+ function resetClock(){previousTime=null;previousWall=null;}
+ // A listener must explicitly press a song's Listen/Play button in a discovery area.
+ // Navigation, Radio Play/Next, LIVE, and automatic next-track controls cannot qualify.
+ document.addEventListener('click',event=>{
+   const button=event.target.closest('button');
+   if(!button||button.disabled)return;
+   const label=(button.textContent||'').trim();
+   if(!/^(?:▶\s*)?(?:Listen|Play)$/i.test(label))return;
+   const section=button.closest('section');
+   if(!section||!manualAreas.includes(section.id))return;
+   if(!button.closest('.sw-row,.vote-song-row,.radio-song-row,.track,.chart-entry'))return;
+   pendingSelection=performance.now();
+ },true);
+ audio.addEventListener('loadstart',()=>{
+   token++;heard=0;attempted=false;resetClock();
+   const song=tracks[index];
+   eligible=!!(pendingSelection&&performance.now()-pendingSelection<4000&&song?.id&&song?.url&&playbackMode==='on-demand');
+   selectedSongId=eligible?song.id:null;
+   pendingSelection=0;
+ });
+ audio.addEventListener('seeking',resetClock);
+ audio.addEventListener('pause',resetClock);
+ document.addEventListener('visibilitychange',resetClock);
  audio.addEventListener('timeupdate',async()=>{
-   if(attempted||audio.paused||audio.seeking||audio.ended||document.hidden)return;
+   if(!eligible||attempted||audio.paused||audio.seeking||audio.ended||document.hidden||playbackMode!=='on-demand')return;
+   const song=tracks[index];
+   if(!song||song.id!==selectedSongId||audio.src!==song.url)return;
    const t=audio.currentTime,now=performance.now();
    if(previousTime!==null&&previousWall!==null){
      const mediaDelta=t-previousTime,wallDelta=(now-previousWall)/1000;
-     // Only forward, real-time listening counts; seeking or rapid jumps do not.
-     if(mediaDelta>0&&mediaDelta<=wallDelta+0.75&&wallDelta<=5){heard+=Math.min(mediaDelta,wallDelta);}
+     if(mediaDelta>0&&mediaDelta<=wallDelta+0.75&&wallDelta<=5)heard+=Math.min(mediaDelta,wallDelta);
    }
    previousTime=t;previousWall=now;
-   if(heard<30)return;
-   const song=tracks[index];
-   if(!song?.id||!song.url||audio.src!==song.url)return;
+   if(heard<35)return;
    attempted=true;
    const currentToken=token;
    try{
      const {data:{user},error:authError}=await db.auth.getUser();
-     if(authError||!user)return;
-     if(currentToken!==token)return;
-     const {error}=await db.rpc('swr_record_song_play',{p_song_id:song.id});
-     if(error)console.warn('Sir Woodbury Radio: play count not recorded:',error.message);
-   }catch(e){console.warn('Sir Woodbury Radio: play count request failed:',e.message);}
+     if(authError||!user||currentToken!==token)return;
+     const {data,error}=await db.rpc('swr_record_song_play',{p_song_id:selectedSongId});
+     if(error)console.warn('SWR intentional play count failed:',error.message);
+     else console.info('SWR intentional play processed:',data);
+   }catch(e){console.warn('SWR intentional play request failed:',e.message);}
  });
- document.addEventListener('visibilitychange',()=>{previousTime=null;previousWall=null;});
 })();
 </script>
 </body></html>
