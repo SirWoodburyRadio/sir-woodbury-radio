@@ -1089,6 +1089,21 @@ updatePlaybackUI();
    }
    say(myVote?'✓ Your vote is counted: '+(myVote==='play'?'PLAY IT!':'GO AWAY!'):!open?'Voting is closed. Wait for Sir Woodbury to say VOTE NOW!':!user?'Voting is open. Sign in under Account to vote.':'Voting is open! Choose PLAY IT or GO AWAY.');
    E('radioLiveMessage').textContent=E('liveVoteMessage').textContent;
+   // LIVE review tally is public to signed-in listeners and artists; Top 20 is separate.
+   let publicTally=E('swrPublicReviewTally');
+   if(!publicTally){
+    publicTally=document.createElement('p');publicTally.id='swrPublicReviewTally';
+    publicTally.setAttribute('aria-live','polite');
+    publicTally.style.cssText='text-align:center;font-size:21px;font-weight:850;color:#fff;margin:16px 0';
+    E('liveVoteMessage').before(publicTally);
+   }
+   if(round){
+    const counts=await db.rpc('live_round_tally',{p_round_id:round.id});
+    if(!counts.error&&counts.data?.length){
+     const x=counts.data[0];
+     publicTally.textContent='👍 PLAY IT: '+(x.play_votes||0)+'   •   👎 GO AWAY: '+(x.away_votes||0);
+    }else publicTally.textContent='Vote totals unavailable';
+   }else publicTally.textContent='';
    if(staff){
     E('liveOpenVote').disabled=!round||open||busy;
     E('liveCloseVote').disabled=!round||!open||busy;
@@ -1107,7 +1122,7 @@ updatePlaybackUI();
  E('liveStageSong').onclick=()=>dj('stage');E('liveOpenVote').onclick=()=>dj('open');E('liveCloseVote').onclick=()=>dj('closed');
  document.querySelector('[data-tab="live"]').addEventListener('click',()=>{refresh().then(listSongs)});
  if(db)db.auth.onAuthStateChange(()=>setTimeout(()=>refresh().then(listSongs),150));
- setInterval(()=>{if(page.classList.contains('active')||E('radio').classList.contains('active'))refresh()},5000);
+ setInterval(()=>{if(page.classList.contains('active')||E('radio').classList.contains('active'))refresh()},2000);
  refresh();
 })();
 </script>
