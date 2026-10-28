@@ -1099,10 +1099,14 @@ updatePlaybackUI();
    }
    if(round){
     const counts=await db.rpc('live_round_tally',{p_round_id:round.id});
-    if(!counts.error&&counts.data?.length){
-     const x=counts.data[0];
-     publicTally.textContent='👍 PLAY IT: '+(x.play_votes||0)+'   •   👎 GO AWAY: '+(x.away_votes||0);
-    }else publicTally.textContent='Vote totals unavailable';
+    const tallyRow=Array.isArray(counts.data)?counts.data[0]:counts.data;
+    if(!counts.error&&tallyRow&&tallyRow.play_votes!=null&&tallyRow.away_votes!=null){
+     publicTally.textContent='👍 PLAY IT: '+tallyRow.play_votes+'   •   👎 GO AWAY: '+tallyRow.away_votes;
+    }else{
+     const reason=counts.error?.message||(!tallyRow?'No tally rows returned':'Tally response missing vote counts');
+     publicTally.textContent='Vote totals unavailable — '+reason;
+     console.warn('SWR LIVE tally request:',{roundId:round.id,error:counts.error,data:counts.data});
+    }
    }else publicTally.textContent='';
    if(staff){
     E('liveOpenVote').disabled=!round||open||busy;
