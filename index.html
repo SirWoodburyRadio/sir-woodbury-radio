@@ -2132,4 +2132,57 @@ html.swr-authenticated.swr-is-owner:has(#live.active) nav{top:52px}
  panel.querySelector('#swrSponsorRequest').onclick=()=>inquiry('Sponsored artist feature','swrSponsorArtist','swrSponsorDetails','swrSponsorStatus',SETTINGS.sponsorContactEmail);
 })();
 </script>
+
+<!-- Ad Manager phase 1: owner-only planning and local playback test. Not a billing ledger. -->
+<style id="swr-ad-manager-style">
+#swrAdManagerBtn{display:none;white-space:nowrap;font-size:12px;padding:8px 10px;background:#63351b;border-color:#e8a45a;font-weight:800}
+html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:block}
+#swrAdManagerPanel{display:none;position:fixed;z-index:100001;top:60px;right:10px;width:min(460px,calc(100vw - 20px));max-height:calc(100vh - 75px);overflow:auto;background:#19171e;border:2px solid #e8a45a;border-radius:15px;padding:16px;box-shadow:0 12px 50px #000d}
+#swrAdManagerPanel.open{display:block}
+#swrAdManagerPanel h2{margin:0 0 7px}#swrAdManagerPanel .ad-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#swrAdManagerPanel .ad-row>*{flex:1}#swrAdManagerPanel .ad-entry{border-top:1px solid #54434a;padding:12px 0}
+#swrAdManagerPanel input{margin:4px 0 10px}#swrAdManagerPanel button{padding:9px}
+@media(max-width:600px){#swrFixedMicBar{gap:5px}#swrAdManagerBtn{font-size:10px;padding:7px 5px}#swrFixedMicButton{min-width:92px;font-size:10px}#swrFixedMicBar .swr-meter-group{width:62px}}
+</style>
+<div id="swrAdManagerPanel" role="dialog" aria-label="Owner Ad Manager" aria-modal="false">
+ <div class="row" style="justify-content:space-between"><h2>📢 Ad Manager</h2><button type="button" id="swrAdClose">✕ Close</button></div>
+ <p class="notice">SETUP / TEST MODE. Entries and test counts are saved only in this browser. They are NOT verified broadcasts, invoices, or billable ad impressions.</p>
+ <label for="swrAdBusiness">Advertiser / business</label><input id="swrAdBusiness" maxlength="100" placeholder="Business name">
+ <div class="ad-row"><div><label for="swrAdPrice">Package price ($)</label><input id="swrAdPrice" type="number" min="0" step="0.01" value="0"></div><div><label for="swrAdSpots">Purchased spots</label><input id="swrAdSpots" type="number" min="1" step="1" value="100"></div></div>
+ <label for="swrAdAudio">Commercial audio URL (HTTPS MP3)</label><input id="swrAdAudio" type="url" placeholder="https://.../commercial.mp3">
+ <p class="muted">Use a publicly hosted audio URL you have permission to broadcast. No audio is uploaded by this form.</p>
+ <button id="swrAdSave" class="primary" type="button">➕ Save advertiser</button>
+ <p id="swrAdFeedback" class="muted" role="status"></p>
+ <h3>Commercial schedule</h3><p>Regular Radio: after every 3 completed songs (browser playback test). LIVE: automatic ads pause; you choose when to play.</p>
+ <div id="swrAdEntries"></div>
+</div>
+<script id="swr-ad-manager-script">
+(()=>{
+ 'use strict';
+ const $=id=>document.getElementById(id), KEY='swr-ad-manager-local-v1';
+ const bar=$('swrFixedMicBar');if(!bar)return;
+ const toggle=document.createElement('button');toggle.id='swrAdManagerBtn';toggle.type='button';toggle.textContent='📢 ADS';bar.appendChild(toggle);
+ const panel=$('swrAdManagerPanel');
+ toggle.onclick=()=>panel.classList.toggle('open');$('swrAdClose').onclick=()=>panel.classList.remove('open');
+ let ads=[];try{ads=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(ads))ads=[];}catch(e){ads=[];}
+ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(ads))}catch(e){$('swrAdFeedback').textContent='Could not save on this device.'}};
+ const owner=()=>document.documentElement.classList.contains('swr-is-owner')&&document.documentElement.classList.contains('swr-authenticated');
+ function render(){const list=$('swrAdEntries');list.replaceChildren();if(!ads.length){list.textContent='No advertisers entered yet.';return;}
+ ads.forEach((ad,i)=>{const box=document.createElement('div');box.className='ad-entry';const heading=document.createElement('strong');heading.textContent=ad.name;const details=document.createElement('p');details.className='muted';details.textContent=`$${ad.price.toFixed(2)} package • ${ad.spots} purchased • ${ad.tests||0} local test plays (NOT billable)`;
+ const controls=document.createElement('div');controls.className='row';const test=document.createElement('button');test.textContent='▶ Test ad';test.onclick=()=>playAd(ad,true);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{if(confirm('Remove advertiser from this browser?')){ads.splice(i,1);save();render()}};controls.append(test,remove);box.append(heading,details,controls);list.append(box);});}
+ $('swrAdSave').onclick=()=>{if(!owner())return;const name=$('swrAdBusiness').value.trim(),url=$('swrAdAudio').value.trim(),price=Number($('swrAdPrice').value),spots=Number($('swrAdSpots').value);
+ if(!name||!/^https:\/\//i.test(url)||!Number.isFinite(price)||price<0||!Number.isInteger(spots)||spots<1){$('swrAdFeedback').textContent='Enter a business, HTTPS audio URL, valid price and number of spots.';return;}
+ ads.push({name,url,price,spots,tests:0});save();render();$('swrAdFeedback').textContent='Saved locally. Not yet active for billing or all listeners.';$('swrAdBusiness').value='';$('swrAdAudio').value='';};
+ const adAudio=new Audio();adAudio.preload='none';let nextSong=null;let completedSongs=0,rotating=0;
+ function isLive(){return document.documentElement.classList.contains('swr-broadcast-active')||Boolean(window.demoIsLive);}
+ function playAd(ad,manual=false){if(!manual&&isLive())return false;const station=$('player');if(!station)return false;
+ if(!manual){station.pause();nextSong=()=>{nextSong=null;try{if(!isLive())station.dispatchEvent(new Event('swr-ad-finished'));}catch(e){}};}
+ else{nextSong=null;}
+ adAudio.src=ad.url;adAudio.currentTime=0;adAudio.onended=()=>{ad.tests=(ad.tests||0)+1;save();render();if(nextSong)nextSong();};adAudio.onerror=()=>{$('swrAdFeedback').textContent='Commercial failed to load. Check the audio URL.';nextSong=null;};
+ adAudio.play().catch(()=>{$('swrAdFeedback').textContent='Browser blocked ad audio. Start playback with the play button first.';nextSong=null;});return true;}
+ // Automatic every-three-song insertion requires integration with the existing station
+ // ended/next handlers and a server-side ledger. Disabled here to avoid skipping songs.
+ // Keep all ad metrics in TEST MODE until authenticated server-side logging is added.
+ render();
+})();
+</script>
 </body></html>
