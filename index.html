@@ -2080,6 +2080,11 @@ html.swr-authenticated.swr-is-owner:has(#live.active) nav{top:52px}
 #swrSupportPanel .swr-money-card button{margin-top:9px}
 #swrSupportPanel .swr-money-card button:disabled{opacity:.55;cursor:not-allowed}
 #swrSupportPanel .swr-money-card textarea{min-height:105px}
+#swrSupportPanel .swr-donor-shoutout{margin:16px 0;padding:15px 18px;border:1px solid #7c3d45;border-radius:14px;background:linear-gradient(105deg,#36171f,#19171d);text-align:center}
+#swrSupportPanel .swr-donor-shoutout strong{display:block;font-size:18px;color:#fff}
+#swrSupportPanel .swr-donor-shoutout p{margin:7px 0 0}
+#swrSupportPanel .swr-donor-shoutout button{margin-top:10px}
+
 </style>
 <script id="swr-monetization-feature">
 (()=>{
@@ -2091,12 +2096,17 @@ html.swr-authenticated.swr-is-owner:has(#live.active) nav{top:52px}
  const panel=document.createElement('div');panel.id='swrSupportPanel';panel.className='panel';
  panel.innerHTML=`<h2>❤️ Support Sir Woodbury Radio</h2>
  <p>Help independent music stay on the air. Donations are optional and never influence song approval, listener voting, or Top 20 rankings.</p>
+ <div class="swr-donor-shoutout" aria-live="polite"><strong>🎙️ KEEP THE MUSIC CRANKED UP! 🤘</strong><p id="swrDonorThanks">Every supporter helps independent music keep rocking. Want to help keep Sir Woodbury Radio going strong?</p><button id="swrDonorJump" type="button">❤️ Support the Station</button></div>
  <div class="swr-money-grid">
  <div class="swr-money-card"><h3>❤️ Support the Station</h3><p>Voluntary listener contributions to help cover station expenses.</p><button id="swrDonateBtn" class="primary" type="button" disabled>Donations Coming Soon</button><p id="swrDonateNote" class="muted">No payments are being collected yet.</p></div>
  <div class="swr-money-card"><h3>📢 Advertise With Us</h3><p>Ask about clearly identified business advertising spots and available packages. Pricing is provided individually.</p><label for="swrAdName">Business name</label><input id="swrAdName" maxlength="100" placeholder="Your business"><label for="swrAdDetails">What would you like to promote?</label><textarea id="swrAdDetails" rows="3" maxlength="1200" placeholder="Tell us about your ad idea"></textarea><button id="swrAdRequest" type="button">Prepare Advertising Inquiry</button><p id="swrAdStatus" class="muted" role="status"></p></div>
  <div class="swr-money-card"><h3>🎸 Sponsored Artist Feature</h3><p>Request a clearly labeled promotional spotlight. Sponsorship does not buy approval, airplay rotation, or votes.</p><label for="swrSponsorArtist">Artist name</label><input id="swrSponsorArtist" maxlength="100" placeholder="Artist or band"><label for="swrSponsorDetails">Promotion idea</label><textarea id="swrSponsorDetails" rows="3" maxlength="1200" placeholder="Tell us about the release or feature"></textarea><button id="swrSponsorRequest" type="button">Prepare Sponsorship Inquiry</button><p id="swrSponsorStatus" class="muted" role="status"></p></div>
  </div><p class="muted">Regular song submissions remain free. All paid promotions will be disclosed. Advertising and donations are not active until the station announces them.</p>`;
  radio.appendChild(panel);
+ // Do not display supporter names until a real contribution is confirmed and the supporter agrees to be named.
+ // Future verified supporter feed can replace #swrDonorThanks with:
+ // “Big thanks to [Name] for keeping Sir Woodbury Radio cranked up! 🤘”
+ panel.querySelector('#swrDonorJump').onclick=()=>{panel.querySelector('#swrDonateBtn').scrollIntoView({behavior:'smooth',block:'center'});};
  const donate=panel.querySelector('#swrDonateBtn');
  if(SETTINGS.donationUrl&&/^https:\/\//i.test(SETTINGS.donationUrl)){
    donate.disabled=false;donate.textContent='❤️ Donate Securely';donate.onclick=()=>window.open(SETTINGS.donationUrl,'_blank','noopener,noreferrer');
