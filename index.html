@@ -2013,4 +2013,28 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  });
 })();
 </script>
+
+<!-- Owner-only persistent microphone control; mirrors the existing LIVE mixer button. -->
+<style id="swr-fixed-mic-style">
+#swrFixedMicBar{display:none;position:fixed;top:0;left:0;right:0;z-index:99999;min-height:52px;padding:6px 14px;background:#111116;border-bottom:2px solid #b53740;box-shadow:0 5px 22px #000a;align-items:center;justify-content:center;gap:14px}
+html.swr-authenticated.swr-is-owner:has(#live.active) #swrFixedMicBar{display:flex}
+html.swr-authenticated.swr-is-owner:has(#live.active) nav{top:52px}
+#swrFixedMicBar .swr-mic-label{font-size:13px;font-weight:800;letter-spacing:.5px}
+#swrFixedMicButton{font-weight:900;min-width:155px;padding:9px 14px;border:2px solid #6bd38b;background:#174b30;color:#fff}
+#swrFixedMicButton.swr-mic-muted{background:#9e242b;border-color:#ff7676}
+#swrFixedMicButton:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:450px){#swrFixedMicBar{gap:8px;padding:5px 8px}#swrFixedMicBar .swr-mic-label{font-size:11px}#swrFixedMicButton{min-width:135px;font-size:13px;padding:9px 7px}}
+</style>
+<div id="swrFixedMicBar"><span class="swr-mic-label">🎙️ DJ MIC</span><button id="swrFixedMicButton" type="button" disabled>🎤 Mute Mic</button></div>
+<script id="swr-fixed-mic-script">
+(()=>{
+ const fixed=document.getElementById('swrFixedMicButton');
+ const original=()=>document.getElementById('swrMuteMic');
+ function sync(){const source=original();fixed.disabled=!source; if(!source)return;const muted=source.textContent.includes('Unmute');fixed.textContent=muted?'🔇 UNMUTE MIC':'🎤 MUTE MIC';fixed.classList.toggle('swr-mic-muted',muted);fixed.setAttribute('aria-pressed',String(muted));}
+ fixed.addEventListener('click',()=>{const source=original();if(source)source.click();sync();});
+ const watch=new MutationObserver(sync);
+ function attach(){const source=original();if(!source)return false;watch.observe(source,{childList:true,characterData:true,subtree:true});sync();return true;}
+ if(!attach()){const pending=new MutationObserver(()=>{if(attach())pending.disconnect()});pending.observe(document.body,{childList:true,subtree:true});}
+})();
+</script>
 </body></html>
