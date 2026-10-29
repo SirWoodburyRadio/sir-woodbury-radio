@@ -2145,14 +2145,14 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
 </style>
 <div id="swrAdManagerPanel" role="dialog" aria-label="Owner Ad Manager" aria-modal="false">
  <div class="row" style="justify-content:space-between"><h2>📢 Ad Manager</h2><button type="button" id="swrAdClose">✕ Close</button></div>
- <p class="notice">CLOUD AD MANAGER. Advertisers and MP3s save in Supabase. Test playback is NOT billable. Automatic insertion is not enabled yet.</p>
+ <p class="notice">CLOUD AD MANAGER. Advertisers and MP3s save in Supabase. Test playback is NOT billable. Automatic insertion is in TEST MODE (nonbillable).</p>
  <label for="swrAdBusiness">Advertiser / business</label><input id="swrAdBusiness" maxlength="100" placeholder="Business name">
  <div class="ad-row"><div><label for="swrAdPrice">Package price ($)</label><input id="swrAdPrice" type="number" min="0" step="0.01" value="0"></div><div><label for="swrAdSpots">Purchased spots</label><input id="swrAdSpots" type="number" min="1" step="1" value="100"></div></div>
  <label for="swrAdAudio">Commercial MP3 file</label><input id="swrAdAudio" type="file" accept="audio/mpeg,.mp3">
  <p class="muted">Choose an MP3 to upload privately to station storage. New ads start INACTIVE.</p>
  <button id="swrAdSave" class="primary" type="button">➕ Save advertiser</button>
  <p id="swrAdFeedback" class="muted" role="status"></p>
- <h3>Commercial schedule</h3><p>Planned: one commercial after every 3 completed songs. Not enabled yet. LIVE broadcasting remains unchanged.</p>
+ <h3>Commercial schedule</h3><p>TEST MODE: one commercial after every 3 completed station songs. No paid spots deducted. LIVE broadcasting remains unchanged.</p>
  <div id="swrAdEntries"></div>
 </div>
 <script id="swr-ad-manager-script">
@@ -2214,6 +2214,75 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
  };
  // Commercials are NOT automatically inserted into station playback yet.
  // Test playback does not create paid impressions. Keep LIVE and rotation untouched.
+})();
+</script>
+<script id="swr-commercial-rotation-test">
+/* Nonbillable, per-listener radio commercial rotation. No LIVE insertion. */
+(()=>{
+ 'use strict';
+ const radio=document.getElementById('player');
+ if(!radio||!window.supabase?.createClient)return;
+ const client=window.supabase.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true}});
+ const commercial=new Audio();commercial.preload='none';
+ let songsFinished=0,adRunning=false,rotation=0;
+ const live=()=>document.documentElement.classList.contains('swr-broadcast-active')||window.demoIsLive===true;
+ const radioPage=()=>document.getElementById('radio')?.classList.contains('active');
+ const eligible=()=>!live()&&radioPage()&&document.documentElement.classList.contains('swr-authenticated');
+ const state=document.getElementById('stationState');
+ const title=document.getElementById('nowTitle'),artist=document.getElementById('nowArtist');
+ let oldTitle='',oldArtist='';
+ async function playAd(){
+   if(!eligible())return false;
+   try{
+     const result=await client.rpc('get_active_commercials');
+     if(result.error)throw result.error;
+     const ads=(result.data||[]).filter(a=>a.audio_path);
+     if(!ads.length)return false;
+     const ad=ads[rotation++%ads.length];
+     const signed=await client.storage.from('commercial-audio').createSignedUrl(ad.audio_path,180);
+     if(signed.error)throw signed.error;
+     if(!eligible())return false;
+     adRunning=true;oldTitle=title?.textContent||'';oldArtist=artist?.textContent||'';
+     if(title)title.textContent='📢 Commercial break';
+     if(artist)artist.textContent=ad.business_name+' • test mode, not billable';
+     if(state)state.textContent='📢 COMMERCIAL • TEST MODE';
+     commercial.src=signed.data.signedUrl;
+     await commercial.play();
+     return true;
+   }catch(e){console.warn('Commercial skipped:',e);stopAd();return false;}
+ }
+ function stopAd(){
+   adRunning=false;commercial.pause();commercial.removeAttribute('src');
+   if(title&&oldTitle)title.textContent=oldTitle;
+   if(artist&&oldArtist)artist.textContent=oldArtist;
+   if(state&&state.textContent.includes('COMMERCIAL'))state.textContent='● APPROVED MUSIC PLAYER';
+ }
+ function resume(){
+   if(!eligible())return;
+   // The existing station shuffle and Top 20 bonus logic remains in charge.
+   const next=document.getElementById('nextBtn');
+   if(next)next.click();
+ }
+ commercial.addEventListener('ended',()=>{stopAd();resume()});
+ commercial.addEventListener('error',()=>{if(adRunning){stopAd();resume()}});
+ // Capture completed station tracks before the existing auto-next listener.
+ radio.addEventListener('ended',async e=>{
+   if(typeof playbackMode==='undefined'||playbackMode!=='station'||!eligible()||adRunning)return;
+   songsFinished++;
+   if(songsFinished%3!==0)return;
+   e.stopImmediatePropagation();
+   const started=await playAd();
+   if(!started)resume();
+ },true);
+ // Do not let commercials continue into LIVE or when leaving Radio.
+ const observer=new MutationObserver(()=>{
+   if(adRunning&&!eligible())stopAd();
+ });
+ observer.observe(document.documentElement,{attributes:true,attributeFilter:['class']});
+ observer.observe(document.getElementById('radio'),{attributes:true,attributeFilter:['class']});
+ document.addEventListener('click',e=>{
+   if(adRunning&&(e.target.closest('nav button')||e.target.closest('#nextBtn'))){stopAd();}
+ },true);
 })();
 </script>
 </body></html>
