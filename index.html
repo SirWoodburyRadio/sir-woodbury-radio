@@ -1506,11 +1506,13 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
      input.connect(mic);mic.connect(limiter);music.connect(limiter);limiter.connect(destination);
      mixContext=ctx;micStream=stream;micSource=input;micGain=mic;musicGain=music;mixLimiter=limiter;mixDestination=destination;
      if(musicSource)musicSource.connect(musicGain);
+     window.swrAttachMeters?.(ctx,mic,music);
      await ctx.resume();
    }catch(e){streamSafeStop();await ctx.close().catch(()=>{});throw e;}
  }
  function streamSafeStop(){if(micStream){micStream.getTracks().forEach(t=>t.stop());micStream=null;}}
  async function releaseMixer(){
+   window.swrDetachMeters?.();
    if(typeof musicAudio!=='undefined'){musicAudio.pause();musicAudio.removeAttribute('src');}
    streamSafeStop();
    if(mixContext){await mixContext.close().catch(()=>{});}
@@ -2024,8 +2026,12 @@ html.swr-authenticated.swr-is-owner:has(#live.active) nav{top:52px}
 #swrFixedMicButton.swr-mic-muted{background:#9e242b;border-color:#ff7676}
 #swrFixedMicButton:disabled{opacity:.5;cursor:not-allowed}
 @media(max-width:450px){#swrFixedMicBar{gap:8px;padding:5px 8px}#swrFixedMicBar .swr-mic-label{font-size:11px}#swrFixedMicButton{min-width:135px;font-size:13px;padding:9px 7px}}
+#swrFixedMicBar .swr-meter-group{display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;width:155px;font-size:11px;font-weight:800;letter-spacing:.5px}
+#swrFixedMicBar .swr-meter-track{width:100%;height:13px;border:1px solid #56505a;border-radius:5px;background:#25252a;overflow:hidden}
+#swrFixedMicBar .swr-meter-fill{width:0%;height:100%;background:linear-gradient(90deg,#29c85e 0%,#8fdb44 55%,#e5c33e 77%,#f14c4c 100%);transition:width 65ms linear}
+@media(max-width:450px){#swrFixedMicBar .swr-meter-group{width:75px;font-size:10px}#swrFixedMicButton{min-width:118px;font-size:11px}}
 </style>
-<div id="swrFixedMicBar"><span class="swr-mic-label">🎙️ DJ MIC</span><button id="swrFixedMicButton" type="button" disabled>🎤 Mute Mic</button></div>
+<div id="swrFixedMicBar"><div class="swr-meter-group"><span>🎤 MIC</span><div class="swr-meter-track"><div id="swrMicMeterFill" class="swr-meter-fill"></div></div></div><button id="swrFixedMicButton" type="button" disabled>🎤 Mute Mic</button><div class="swr-meter-group"><span>🎵 MUSIC</span><div class="swr-meter-track"><div id="swrMusicMeterFill" class="swr-meter-fill"></div></div></div></div>
 <script id="swr-fixed-mic-script">
 (()=>{
  const fixed=document.getElementById('swrFixedMicButton');
@@ -2035,6 +2041,35 @@ html.swr-authenticated.swr-is-owner:has(#live.active) nav{top:52px}
  const watch=new MutationObserver(sync);
  function attach(){const source=original();if(!source)return false;watch.observe(source,{childList:true,characterData:true,subtree:true});sync();return true;}
  if(!attach()){const pending=new MutationObserver(()=>{if(attach())pending.disconnect()});pending.observe(document.body,{childList:true,subtree:true});}
+})();
+</script>
+<script id="swr-live-level-meters">
+(()=>{
+ let ctx=null,analyzers=[],buffers=[],frame=0;
+ const micFill=document.getElementById('swrMicMeterFill');
+ const musicFill=document.getElementById('swrMusicMeterFill');
+ function reset(){cancelAnimationFrame(frame);frame=0;analyzers=[];buffers=[];ctx=null;micFill.style.width='0%';musicFill.style.width='0%';}
+ window.swrDetachMeters=reset;
+ window.swrAttachMeters=(audioContext,micNode,musicNode)=>{
+  reset();ctx=audioContext;
+  for(const node of [micNode,musicNode]){
+   const analyser=ctx.createAnalyser();analyser.fftSize=1024;analyser.smoothingTimeConstant=.65;
+   node.connect(analyser); // Monitor only: no speaker/output connection, so no feedback.
+   analyzers.push(analyser);buffers.push(new Float32Array(analyser.fftSize));
+  }
+  function update(){
+   if(!ctx||ctx.state==='closed')return;
+   for(let i=0;i<2;i++){
+    analyzers[i].getFloatTimeDomainData(buffers[i]);
+    let sum=0;for(const sample of buffers[i])sum+=sample*sample;
+    const rms=Math.sqrt(sum/buffers[i].length);
+    const percent=Math.min(100,Math.max(0,(20*Math.log10(Math.max(rms,1e-7))+55)*2.2));
+    (i===0?micFill:musicFill).style.width=percent.toFixed(1)+'%';
+   }
+   frame=requestAnimationFrame(update);
+  }
+  update();
+ };
 })();
 </script>
 </body></html>
