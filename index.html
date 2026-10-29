@@ -95,7 +95,7 @@ html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#home.active)
 <section id="charts"><div class="eyebrow">LISTENERS CHOOSE THE MUSIC</div><h1>Sir Woodbury Top 20.</h1><p>Vote for up to five different approved songs per week. One vote per song. Paid features never count toward chart positions.</p><div class="notice">Prototype only: votes are saved on this device, not verified or shared. Final public voting will require real sign-in, server-side vote limits, and anti-abuse checks.</div><div class="panel"><div class="row"><span class="pill" id="chartWeek"></span><span class="muted" id="voteCount"></span></div><h2 style="margin-top:18px">🏆 Listener rankings</h2><label for="chartGenre">Chart category</label><select id="chartGenre"><option value="">Overall Top 20</option><option>Country</option><option>Rock</option><option>Rap / Hip-Hop</option><option>Pop</option><option>Gospel</option><option>Blues</option><option>Comedy</option><option>Other</option></select><div id="chartList"></div></div></section>
 <section id="studio"><div class="eyebrow">HOST CONTROL ROOM</div><h1>Welcome to your studio.</h1><div class="notice">Camera/mic preview works locally with permission on HTTPS or localhost. This prototype does <strong>not</strong> broadcast to viewers yet. Guest invitations and live streaming require a backend.</div><div class="grid"><div class="panel"><h2>📹 Your camera</h2><video class="video hide" id="camera" autoplay muted playsinline></video><div class="screen" id="cameraPlaceholder">Camera is off</div><div class="row" style="margin-top:12px"><button class="primary" id="cameraBtn">Turn Camera On</button><button id="micBtn">🎤 Enable Mic</button></div><p class="muted" id="deviceStatus">Devices are off.</p></div><div class="panel"><h2>🎧 Show controls</h2><label>Schedule your next show (local demo)</label><input id="showWhen" type="datetime-local"><button id="saveShow" type="button">Save Countdown</button><button id="demoLive" type="button">🔴 Simulate Live / End Live</button><p class="muted">Countdown and live takeover are simulated on this device only; no actual broadcasting yet.</p><label>Show title</label><input id="showTitle" value="The Sir Woodbury Show"><label>Guest artist</label><input id="guestName" placeholder="Artist name (coming soon)"><button id="previewShow" class="primary" style="margin-top:15px">Preview Show Banner</button><p class="muted" id="showBanner">Off air — show preview only</p><p class="muted">Planned: private backstage room, invite link, guest audio/video, live chat, song cue deck, and true Go Live.</p></div></div><div class="panel"><h2>➕ Add a track to your station</h2><p class="muted">For testing, add MP3, WAV, or other browser-supported audio files you own or have permission to stream. Tracks are saved locally on this device using browser storage when supported. They are not uploaded to a public station.</p><div class="grid"><div><label>Song title</label><input id="addTitle" placeholder="Song title"></div><div><label>Artist</label><input id="addArtist" placeholder="Sir Woodbury"></div><div><label>Genre</label><select id="addGenre"><option>Country</option><option>Rock</option><option>Blues</option><option>Gospel</option><option>Comedy</option><option>Pop</option><option>Rap / Hip-Hop</option><option>Other</option></select></div><div><label>Audio file</label><input id="addFile" type="file" accept="audio/*"></div></div><button id="addTrack" class="primary" style="margin-top:15px">Add to Radio Rotation</button><p id="addStatus" class="muted"></p></div></section>
 <section id="submit"><div class="eyebrow">ARTIST PORTAL</div><h1>Get heard.</h1><p>Artists can submit original songs for review. Promotional packages will be clearly identified as paid features, not guaranteed airplay.</p><div class="panel"><form id="submissionForm"><div class="grid"><div><label>Artist name</label><input name="artist" required placeholder="Your artist name"></div><div><label>Email</label><input name="email" type="email" required placeholder="artist@example.com"></div><div><label>Song title</label><input name="title" required placeholder="Your song title"></div><div><label>Genre</label><select name="genre"><option>Country</option><option>Rock</option><option>Blues</option><option>Gospel</option><option>Comedy</option><option>Pop</option><option>Rap / Hip-Hop</option><option>Other</option></select></div></div><label>Song file (uploaded securely for review)</label><input name="audio" type="file" accept="audio/*" required><label>Artist story / links</label><textarea name="story" rows="3" placeholder="Tell us about your music"></textarea><label><input type="checkbox" required name="rights"> I own or control the necessary rights and authorize Sir Woodbury Radio staff to review this recording. Public streaming requires a separate agreement.</label><button class="primary" type="submit">Submit for Review</button><p class="muted">Maximum five pending songs per signed-in artist account.</p><p class="muted" id="submitStatus">Sign in under Account, then submit your song to the private Supabase review queue. Songs are not public until approved.</p></form></div></section>
-<section id="admin"><div class="eyebrow">OWNER DASHBOARD</div><h1>Review submissions.</h1><div class="notice">Only authorized station staff can review pending songs.</div><div class="panel"><h2>🎧 Pending songs</h2><p class="muted">Tap play to listen privately before approving. Songs are not added to the station until approved.</p><div id="submissions"><p>Checking pending submissions…</p></div></div><div class="panel"><h2>💰 Future monetization</h2><p>Free song submissions, optional sponsored artist features, and transparent promotional disclosures. Payments are not enabled in this prototype.</p></div></section>
+<section id="admin"><div class="eyebrow">OWNER DASHBOARD</div><h1>Review submissions.</h1><div class="notice">Only authorized station staff can review pending songs.</div><div class="panel"><h2>🎧 Pending songs</h2><p class="muted">Tap play to listen privately before approving. Songs are not added to the station until approved.</p><div id="submissions"><p>Checking pending submissions…</p></div></div><div class="panel"><h2>💰 Station support & advertising</h2><p>Donation and advertising pages are prepared. Payments stay disabled until the owner adds verified payment links. Free submissions and unbiased voting remain unchanged.</p><p class="muted">To activate donations later, configure the station’s official payment URL in the monetization settings. Review advertising requests and confirm terms before accepting payment.</p></div></section>
 <section id="live">
  <div class="panel" id="liveOwnerIntro"><div class="eyebrow">OWNER CONTROL ROOM</div><h1>🔴 LIVE DJ Controls</h1><p>Choose a song and control voting here. Listeners vote on the main Radio page.</p></div>
  <div class="hero"><div class="eyebrow">SIR WOODBURY RADIO • LIVE SHOW</div><h1>PLAY. OR. GO AWAY.</h1><p>Hear the featured song on the live broadcast. Your vote helps decide whether it joins rotation.</p><span class="pill" id="liveRoundBadge">● WAITING FOR THE DJ</span></div>
@@ -2070,6 +2070,55 @@ html.swr-authenticated.swr-is-owner:has(#live.active) nav{top:52px}
   }
   update();
  };
+})();
+</script>
+
+<style id="swr-monetization-style">
+#swrSupportPanel .swr-money-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px;margin-top:16px}
+#swrSupportPanel .swr-money-card{background:#15141a;border:1px solid #4e3942;border-radius:14px;padding:18px}
+#swrSupportPanel .swr-money-card h3{margin:0 0 8px}
+#swrSupportPanel .swr-money-card button{margin-top:9px}
+#swrSupportPanel .swr-money-card button:disabled{opacity:.55;cursor:not-allowed}
+#swrSupportPanel .swr-money-card textarea{min-height:105px}
+</style>
+<script id="swr-monetization-feature">
+(()=>{
+ 'use strict';
+ // Replace these with the station's own verified payment / business contact URLs when ready.
+ const SETTINGS={donationUrl:'',advertisingContactEmail:'',sponsorContactEmail:''};
+ const radio=document.getElementById('radio');
+ if(!radio||document.getElementById('swrSupportPanel'))return;
+ const panel=document.createElement('div');panel.id='swrSupportPanel';panel.className='panel';
+ panel.innerHTML=`<h2>❤️ Support Sir Woodbury Radio</h2>
+ <p>Help independent music stay on the air. Donations are optional and never influence song approval, listener voting, or Top 20 rankings.</p>
+ <div class="swr-money-grid">
+ <div class="swr-money-card"><h3>❤️ Support the Station</h3><p>Voluntary listener contributions to help cover station expenses.</p><button id="swrDonateBtn" class="primary" type="button" disabled>Donations Coming Soon</button><p id="swrDonateNote" class="muted">No payments are being collected yet.</p></div>
+ <div class="swr-money-card"><h3>📢 Advertise With Us</h3><p>Ask about clearly identified business advertising spots and available packages. Pricing is provided individually.</p><label for="swrAdName">Business name</label><input id="swrAdName" maxlength="100" placeholder="Your business"><label for="swrAdDetails">What would you like to promote?</label><textarea id="swrAdDetails" rows="3" maxlength="1200" placeholder="Tell us about your ad idea"></textarea><button id="swrAdRequest" type="button">Prepare Advertising Inquiry</button><p id="swrAdStatus" class="muted" role="status"></p></div>
+ <div class="swr-money-card"><h3>🎸 Sponsored Artist Feature</h3><p>Request a clearly labeled promotional spotlight. Sponsorship does not buy approval, airplay rotation, or votes.</p><label for="swrSponsorArtist">Artist name</label><input id="swrSponsorArtist" maxlength="100" placeholder="Artist or band"><label for="swrSponsorDetails">Promotion idea</label><textarea id="swrSponsorDetails" rows="3" maxlength="1200" placeholder="Tell us about the release or feature"></textarea><button id="swrSponsorRequest" type="button">Prepare Sponsorship Inquiry</button><p id="swrSponsorStatus" class="muted" role="status"></p></div>
+ </div><p class="muted">Regular song submissions remain free. All paid promotions will be disclosed. Advertising and donations are not active until the station announces them.</p>`;
+ radio.appendChild(panel);
+ const donate=panel.querySelector('#swrDonateBtn');
+ if(SETTINGS.donationUrl&&/^https:\/\//i.test(SETTINGS.donationUrl)){
+   donate.disabled=false;donate.textContent='❤️ Donate Securely';donate.onclick=()=>window.open(SETTINGS.donationUrl,'_blank','noopener,noreferrer');
+   panel.querySelector('#swrDonateNote').textContent='Donations are processed by the linked payment provider.';
+ }
+ async function inquiry(kind,nameId,detailsId,statusId,email){
+   const name=panel.querySelector('#'+nameId).value.trim();
+   const details=panel.querySelector('#'+detailsId).value.trim();
+   const status=panel.querySelector('#'+statusId);
+   if(!name||!details){status.textContent='Please enter your name and details first.';return;}
+   const subject='Sir Woodbury Radio — '+kind+' inquiry';
+   const body=kind+' inquiry\nName: '+name+'\nDetails: '+details+'\n\nPlease contact me to discuss availability and pricing.';
+   if(email&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+     window.location.href='mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+     status.textContent='Your email app should open with the prepared inquiry. No request is submitted until you send it.';
+   }else{
+     try{await navigator.clipboard.writeText(subject+'\n\n'+body);status.textContent='Inquiry copied! Station contact details are not connected yet, so nothing has been sent.';}
+     catch(e){status.textContent='Contact is not connected yet. Copy your details above to save the inquiry.';}
+   }
+ }
+ panel.querySelector('#swrAdRequest').onclick=()=>inquiry('Advertising','swrAdName','swrAdDetails','swrAdStatus',SETTINGS.advertisingContactEmail);
+ panel.querySelector('#swrSponsorRequest').onclick=()=>inquiry('Sponsored artist feature','swrSponsorArtist','swrSponsorDetails','swrSponsorStatus',SETTINGS.sponsorContactEmail);
 })();
 </script>
 </body></html>
