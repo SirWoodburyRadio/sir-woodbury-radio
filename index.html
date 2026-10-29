@@ -2145,51 +2145,75 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
 </style>
 <div id="swrAdManagerPanel" role="dialog" aria-label="Owner Ad Manager" aria-modal="false">
  <div class="row" style="justify-content:space-between"><h2>📢 Ad Manager</h2><button type="button" id="swrAdClose">✕ Close</button></div>
- <p class="notice">SETUP / TEST MODE. Entries and test counts are saved only in this browser. They are NOT verified broadcasts, invoices, or billable ad impressions.</p>
+ <p class="notice">CLOUD AD MANAGER. Advertisers and MP3s save in Supabase. Test playback is NOT billable. Automatic insertion is not enabled yet.</p>
  <label for="swrAdBusiness">Advertiser / business</label><input id="swrAdBusiness" maxlength="100" placeholder="Business name">
  <div class="ad-row"><div><label for="swrAdPrice">Package price ($)</label><input id="swrAdPrice" type="number" min="0" step="0.01" value="0"></div><div><label for="swrAdSpots">Purchased spots</label><input id="swrAdSpots" type="number" min="1" step="1" value="100"></div></div>
  <label for="swrAdAudio">Commercial MP3 file</label><input id="swrAdAudio" type="file" accept="audio/mpeg,.mp3">
- <p class="muted">Choose an MP3 from your computer. Saved on this device for testing only; not yet uploaded to the station for listeners.</p>
+ <p class="muted">Choose an MP3 to upload privately to station storage. New ads start INACTIVE.</p>
  <button id="swrAdSave" class="primary" type="button">➕ Save advertiser</button>
  <p id="swrAdFeedback" class="muted" role="status"></p>
- <h3>Commercial schedule</h3><p>Regular Radio: after every 3 completed songs (browser playback test). LIVE: automatic ads pause; you choose when to play.</p>
+ <h3>Commercial schedule</h3><p>Planned: one commercial after every 3 completed songs. Not enabled yet. LIVE broadcasting remains unchanged.</p>
  <div id="swrAdEntries"></div>
 </div>
 <script id="swr-ad-manager-script">
 (()=>{
  'use strict';
- const $=id=>document.getElementById(id), KEY='swr-ad-manager-local-v1';
+ const $=id=>document.getElementById(id);
  const bar=$('swrFixedMicBar');if(!bar)return;
  const toggle=document.createElement('button');toggle.id='swrAdManagerBtn';toggle.type='button';toggle.textContent='📢 ADS';bar.appendChild(toggle);
  const panel=$('swrAdManagerPanel');
- toggle.onclick=()=>panel.classList.toggle('open');$('swrAdClose').onclick=()=>panel.classList.remove('open');
- let ads=[];try{ads=JSON.parse(localStorage.getItem(KEY)||'[]');if(!Array.isArray(ads))ads=[];}catch(e){ads=[];}
- const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(ads))}catch(e){$('swrAdFeedback').textContent='Could not save on this device.'}};
- const DBNAME='swr-ad-audio-local-v1';let audioDB=null;
- const ready=new Promise(resolve=>{try{const req=indexedDB.open(DBNAME,1);req.onupgradeneeded=()=>req.result.createObjectStore('files');req.onsuccess=()=>{audioDB=req.result;resolve(true)};req.onerror=()=>resolve(false);}catch(e){resolve(false)}});
- async function storeAudio(id,file){if(!await ready)throw Error('Browser storage unavailable');return new Promise((resolve,reject)=>{const tx=audioDB.transaction('files','readwrite');tx.objectStore('files').put(file,id);tx.oncomplete=resolve;tx.onerror=()=>reject(Error('Could not save MP3'));});}
- async function getAudio(id){if(!await ready)return null;return new Promise(resolve=>{const req=audioDB.transaction('files').objectStore('files').get(id);req.onsuccess=()=>resolve(req.result||null);req.onerror=()=>resolve(null);});}
- async function deleteAudio(id){if(!await ready)return;audioDB.transaction('files','readwrite').objectStore('files').delete(id);}
-
+ const client=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true}});
  const owner=()=>document.documentElement.classList.contains('swr-is-owner')&&document.documentElement.classList.contains('swr-authenticated');
- function render(){const list=$('swrAdEntries');list.replaceChildren();if(!ads.length){list.textContent='No advertisers entered yet.';return;}
- ads.forEach((ad,i)=>{const box=document.createElement('div');box.className='ad-entry';const heading=document.createElement('strong');heading.textContent=ad.name;const details=document.createElement('p');details.className='muted';details.textContent=`$${ad.price.toFixed(2)} package • ${ad.spots} purchased • ${ad.tests||0} local test plays (NOT billable)`;
- const controls=document.createElement('div');controls.className='row';const test=document.createElement('button');test.textContent='▶ Test ad';test.onclick=()=>playAd(ad,true);const remove=document.createElement('button');remove.textContent='Remove';remove.onclick=()=>{if(confirm('Remove advertiser from this browser?')){ads.splice(i,1);deleteAudio(ad.id);save();render()}};controls.append(test,remove);box.append(heading,details,controls);list.append(box);});}
- $('swrAdSave').onclick=async()=>{if(!owner())return;const name=$('swrAdBusiness').value.trim(),file=$('swrAdAudio').files[0],price=Number($('swrAdPrice').value),spots=Number($('swrAdSpots').value);
- if(!name||!file||!(file.type==='audio/mpeg'||/\.mp3$/i.test(file.name))||!Number.isFinite(price)||price<0||!Number.isInteger(spots)||spots<1){$('swrAdFeedback').textContent='Enter business, choose an MP3, and enter valid price and spots.';return;}
- const id='ad-'+Date.now()+'-'+Math.random().toString(36).slice(2);try{await storeAudio(id,file)}catch(e){$('swrAdFeedback').textContent=e.message;return;}
- ads.push({id,name,price,spots,tests:0});save();render();$('swrAdFeedback').textContent='MP3 saved on this device for testing. Not broadcast to listeners.';$('swrAdBusiness').value='';$('swrAdAudio').value='';};
- const adAudio=new Audio();adAudio.preload='none';let nextSong=null;let completedSongs=0,rotating=0;
- function isLive(){return document.documentElement.classList.contains('swr-broadcast-active')||Boolean(window.demoIsLive);}
- async function playAd(ad,manual=false){if(!owner()||(!manual&&isLive()))return false;const station=$('player');if(!station)return false;
- if(!manual){station.pause();nextSong=()=>{nextSong=null;try{if(!isLive())station.dispatchEvent(new Event('swr-ad-finished'));}catch(e){}};}
- else{nextSong=null;}
- const file=ad.id?await getAudio(ad.id):null;if(!file){$('swrAdFeedback').textContent='MP3 not found on this device. Re-add advertiser with an MP3.';nextSong=null;return false;}if(adAudio.dataset.objectUrl)URL.revokeObjectURL(adAudio.dataset.objectUrl);const objectUrl=URL.createObjectURL(file);adAudio.dataset.objectUrl=objectUrl;adAudio.src=objectUrl;adAudio.currentTime=0;adAudio.onended=()=>{ad.tests=(ad.tests||0)+1;save();render();if(nextSong)nextSong();};adAudio.onerror=()=>{$('swrAdFeedback').textContent='Commercial failed to load. Check the audio URL.';nextSong=null;};
- adAudio.play().catch(()=>{$('swrAdFeedback').textContent='Browser blocked ad audio. Start playback with the play button first.';nextSong=null;});return true;}
- // Automatic every-three-song insertion requires integration with the existing station
- // ended/next handlers and a server-side ledger. Disabled here to avoid skipping songs.
- // Keep all ad metrics in TEST MODE until authenticated server-side logging is added.
- render();
+ const feedback=msg=>$('swrAdFeedback').textContent=msg;
+ let ads=[];const adAudio=new Audio();adAudio.preload='none';
+ toggle.onclick=()=>{if(!owner())return;panel.classList.toggle('open');if(panel.classList.contains('open'))refresh()};
+ $('swrAdClose').onclick=()=>panel.classList.remove('open');
+ async function refresh(){
+   if(!owner()||!client)return;
+   const {data,error}=await client.from('radio_advertisers').select('id,business_name,package_price,purchased_spots,audio_path,active').order('created_at',{ascending:false});
+   if(error){feedback('Cannot load advertisers: '+error.message);return;}
+   ads=data||[];render();
+ }
+ function render(){
+   const list=$('swrAdEntries');list.replaceChildren();
+   if(!ads.length){list.textContent='No cloud advertisers yet.';return;}
+   ads.forEach(ad=>{
+     const box=document.createElement('div');box.className='ad-entry';
+     const heading=document.createElement('strong');heading.textContent=ad.business_name;
+     const details=document.createElement('p');details.className='muted';
+     details.textContent=`$${Number(ad.package_price).toFixed(2)} package • ${ad.purchased_spots} spots • ${ad.active?'ACTIVE':'INACTIVE'} • test plays NOT billable`;
+     const controls=document.createElement('div');controls.className='row';
+     const test=document.createElement('button');test.textContent='▶ Test ad';test.onclick=()=>playTest(ad);
+     const activate=document.createElement('button');activate.textContent=ad.active?'⏸ Deactivate':'✅ Activate';
+     activate.onclick=async()=>{if(!owner())return;const {error}=await client.from('radio_advertisers').update({active:!ad.active}).eq('id',ad.id);if(error)feedback(error.message);else{feedback('Advertiser updated.');refresh()}};
+     controls.append(test,activate);box.append(heading,details,controls);list.append(box);
+   });
+ }
+ async function playTest(ad){
+   if(!owner()||!ad.audio_path)return;
+   adAudio.pause();
+   const {data,error}=await client.storage.from('commercial-audio').createSignedUrl(ad.audio_path,120);
+   if(error){feedback('Cannot open commercial: '+error.message);return;}
+   adAudio.src=data.signedUrl;adAudio.currentTime=0;
+   adAudio.onended=()=>feedback('✓ Test finished. No billable play recorded.');
+   try{await adAudio.play();feedback('Playing test commercial — NOT billable.')}catch(e){feedback('Playback failed: '+e.message)}
+ }
+ $('swrAdSave').onclick=async()=>{
+   if(!owner()||!client){feedback('Owner sign-in required.');return;}
+   const name=$('swrAdBusiness').value.trim(),file=$('swrAdAudio').files[0],price=Number($('swrAdPrice').value),spots=Number($('swrAdSpots').value);
+   if(!name||!file||!(file.type==='audio/mpeg'||/\.mp3$/i.test(file.name))||!Number.isFinite(price)||price<0||!Number.isInteger(spots)||spots<1){feedback('Enter business, MP3, valid price, and number of spots.');return;}
+   const btn=$('swrAdSave');btn.disabled=true;feedback('Uploading MP3 to station storage…');
+   const path=crypto.randomUUID()+'.mp3';
+   try{
+     const uploaded=await client.storage.from('commercial-audio').upload(path,file,{contentType:'audio/mpeg',upsert:false});
+     if(uploaded.error)throw uploaded.error;
+     const saved=await client.from('radio_advertisers').insert({business_name:name,package_price:price,purchased_spots:spots,audio_path:path,active:false});
+     if(saved.error){await client.storage.from('commercial-audio').remove([path]);throw saved.error;}
+     $('swrAdBusiness').value='';$('swrAdAudio').value='';feedback('✓ Saved to Supabase. INACTIVE until you activate it.');await refresh();
+   }catch(e){feedback('Save failed: '+e.message)}finally{btn.disabled=false;}
+ };
+ // Commercials are NOT automatically inserted into station playback yet.
+ // Test playback does not create paid impressions. Keep LIVE and rotation untouched.
 })();
 </script>
 </body></html>
