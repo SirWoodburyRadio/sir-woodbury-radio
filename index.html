@@ -2372,7 +2372,7 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
  const intro=$('futureStations').querySelector('p.muted');if(intro)intro.textContent='Choose a genre to see its approved songs. All-genre radio rotation stays unchanged.';
  const admin=$('admin');
  const panel=document.createElement('div');panel.className='panel';panel.id='swrOwnerGenres';panel.hidden=true;
- panel.innerHTML='<h2>🎼 Manage Approved Song Genres</h2><p class="muted">Owner only. Changes are saved to the station database.</p><button id="swrRefreshGenres" type="button">↻ Load Approved Songs</button><p id="swrGenreManageStatus" class="muted"></p><div id="swrGenreManageList"></div>';
+ panel.innerHTML='<h2>🎼 Manage Approved Songs</h2><p class="muted">Owner only. Save genres or remove songs from public rotation. Removed audio is kept for recovery.</p><button id="swrRefreshGenres" type="button">↻ Load Approved Songs</button><p id="swrGenreManageStatus" class="muted"></p><div id="swrGenreManageList"></div>';
  admin.append(panel);
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true}});
  let owner=false;
@@ -2408,7 +2408,23 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
        const local=tracks.find(t=>t.id===song.id);if(local)local.genre=sel.value;
        drawGenre();try{renderSongs()}catch(e){};
      };
-     sel.onchange=()=>save.textContent='Save Genre';line.append(info,sel,save);list.append(line);
+     const remove=document.createElement('button');
+     remove.textContent='🗑️ Remove Song';
+     remove.title='Take this song off the public station (keeps a backup record and audio)';
+     remove.onclick=async()=>{
+       if(!await verifyOwner()){alert('Owner access required.');return;}
+       if(!confirm('Remove "'+song.title+'" from the public station? It will disappear from rotation, Discover and Top 20 after refresh. The original upload will be retained for recovery.'))return;
+       remove.disabled=true;remove.textContent='Removing…';
+       const {data:updated,error:err}=await db.from('songs').update({status:'rejected',in_rotation:false}).eq('id',song.id).eq('status','approved').select('id');
+       if(err||!updated?.length){remove.disabled=false;remove.textContent='🗑️ Remove Song';status.textContent='Removal failed: '+(err?.message||'No database update permission.');return;}
+       const pos=tracks.findIndex(t=>t.id===song.id);
+       if(pos>=0){if(index===pos){player.pause();player.removeAttribute('src');player.load();index=-1;}
+         tracks.splice(pos,1);if(index>pos)index--;}
+       status.textContent='✓ '+song.title+' removed from public rotation. Original audio kept for recovery.';
+       try{renderSongs();renderS3();renderHomeChart?.();}catch(e){console.warn('Refresh after removal:',e);}
+       await refresh();
+     };
+     sel.onchange=()=>save.textContent='Save Genre';line.append(info,sel,save,remove);list.append(line);
    });
  }
  $('swrRefreshGenres').onclick=refresh;
