@@ -77,7 +77,7 @@ html.swr-authenticated.swr-broadcast-active:not(.swr-is-owner):has(#home.active)
 #swrBattleOwner input{margin:5px 0 10px}
 #swrBattleOwner button{margin:4px}
 @media(max-width:480px){.swr-battle-side{padding:12px 6px}.swr-battle-side button{padding:10px 4px;font-size:13px}}
-</style></head><body><header><div class="logo"><div class="mark">BW</div><div><div class="brand">SIR WOODBURY RADIO</div><div class="sub">INDEPENDENT MUSIC • NO BOUNDARIES</div></div></div><div class="top-tools"><span class="pill">STUDIO FOUR</span><div id="liveCountdown" class="countdown">📻 NEXT LIVE: NOT SCHEDULED</div></div></header><nav><button data-tab="home" class="active">🏠 Main</button><button data-tab="radio">📻 Radio</button><button data-tab="discover">🎵 Discover</button><button data-tab="live">🔴 LIVE</button><button data-tab="studio">🎙️ My Studio</button><button data-tab="submit">📤 Submit Music</button><button data-tab="charts">🏆 Vote / Top 20</button><button data-tab="support">❤️ Support the Station</button><button data-tab="account">👤 Account</button><button data-tab="admin">🛡️ Review</button></nav><main><section id="home" class="active"><button id="swrReturnToLive" type="button">🔴 RETURN TO LIVE BROADCAST</button>
+</style><style id="swr-hide-radio-genre-boxes">#futureStations,#swrGenreSongs{display:none!important}</style></head><body><header><div class="logo"><div class="mark">BW</div><div><div class="brand">SIR WOODBURY RADIO</div><div class="sub">INDEPENDENT MUSIC • NO BOUNDARIES</div></div></div><div class="top-tools"><span class="pill">STUDIO FOUR</span><div id="liveCountdown" class="countdown">📻 NEXT LIVE: NOT SCHEDULED</div></div></header><nav><button data-tab="home" class="active">🏠 Main</button><button data-tab="radio">📻 Radio</button><button data-tab="discover">🎵 Discover</button><button data-tab="live">🔴 LIVE</button><button data-tab="studio">🎙️ My Studio</button><button data-tab="submit">📤 Submit Music</button><button data-tab="charts">🏆 Vote / Top 20</button><button data-tab="support">❤️ Support the Station</button><button data-tab="account">👤 Account</button><button data-tab="admin">🛡️ Review</button></nav><main><section id="home" class="active"><button id="swrReturnToLive" type="button">🔴 RETURN TO LIVE BROADCAST</button>
 <div class="hero"><div class="eyebrow">SIR WOODBURY RADIO • THIS WEEK</div>
 <h1>Your Top 20<br>Votes This Week</h1>
 <p>Will they still be here next week? <strong>Your vote changes everything.</strong></p>
@@ -233,7 +233,7 @@ if(client){
     if(error){say('Sign-in failed: '+error.message);return;}
     el('realPassword').value='';
     await showSession(data.session);
-    switchTab('radio');
+    switchTab('home');
     window.scrollTo({top:0,behavior:'instant'});
   };
   el('realSignUp').onclick=async()=>{
@@ -824,7 +824,7 @@ updatePlaybackUI();
   info.append(title,detail);
   const btn=document.createElement('button');const has=mine.has(id(t));
   btn.textContent=has?'✓ Voted':'❤️ Vote';btn.disabled=has||busy||!listener||mine.size>=5;
-  btn.title=!signedIn?'Sign in under Account to vote':!listener?'Only listener accounts may vote':mine.size>=5?'Five votes already used this week':'';
+  btn.title=!signedIn?'Sign in under Account to vote':!listener?'Only listener and artist accounts may vote':mine.size>=5?'Five votes already used this week':'';
   const listen=document.createElement('button');listen.textContent='▶ Listen';listen.type='button';
   listen.onclick=()=>{
     const ix=tracks.findIndex(x=>id(x)===id(t));if(ix<0)return;
@@ -878,16 +878,16 @@ updatePlaybackUI();
    if(user){
     const [profile,votes]=await Promise.all([db.from('profiles').select('role').eq('id',user.id).maybeSingle(),db.rpc('my_weekly_song_votes')]);
     if(profile.error)throw profile.error;if(votes.error)throw votes.error;
-    listener=profile.data?.role==='listener';
+    listener=['listener','artist'].includes(profile.data?.role);
     mine=new Set((votes.data||[]).map(x=>String(x.song_id)));
    }
    loaded=true;
-   status.textContent=!signedIn?'Sign in under Account with a listener account to vote. Everyone can see the chart.':!listener?'You are signed in, but only listener accounts can vote.':`Your votes this week: ${mine.size} of 5. All votes count toward the shared chart.`;
+   status.textContent=!signedIn?'Sign in under Account as a listener or artist to vote. Everyone can see the chart.':!listener?'Only listener and artist accounts can vote.':`Your votes this week: ${mine.size} of 5. All votes count toward the shared chart.`;
    draw();
   }catch(e){status.textContent='Could not load shared voting: '+e.message;loaded=false;draw()}
  }
  async function cast(t){
-  if(!listener){status.textContent='Sign in with a listener account under Account to vote.';return}
+  if(!listener){status.textContent='Sign in with a listener or artist account under Account to vote.';return}
   if(busy||mine.has(id(t)))return;
   busy=true;draw();status.textContent='Saving your vote…';
   try{
@@ -982,8 +982,9 @@ updatePlaybackUI();
      console.warn('Browser blocked autoplay:',e.message);
    });
  }
+ window.swrAutoDJPlayNext=playNext;
  function tryStart(){
-   if(!tracks.length||!radio.classList.contains('active')||demoIsLive)return;
+   if(!tracks.length||!(radio.classList.contains('active')||document.getElementById('home')?.classList.contains('active'))||demoIsLive)return;
    if(!audio.getAttribute('src')||index<0){requested=true;playNext()}
  }
  // New catalog becomes available asynchronously after Supabase returns.
@@ -1010,8 +1011,8 @@ updatePlaybackUI();
      if(!wasQuiet && playbackMode==='on-demand')audio.pause();
      // Stop previews when navigating to a different listening section.
      if(wasQuiet && id!==previousTab && playbackMode==='on-demand')audio.pause();
-   }else if(id==='radio'){
-     // Returning to radio always tunes into rotation, not a paused on-demand song.
+   }else if(id==='radio'||id==='home'){
+     // Returning to radio or Main always tunes into rotation, not a paused on-demand song.
      if(playbackMode!=='station'||index<0||!audio.getAttribute('src'))playNext();
      else if(audio.paused)audio.play().catch(()=>{});
    }else if(wasQuiet && playbackMode==='on-demand'){
@@ -1212,7 +1213,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  if(!main||!audio)return;
  const page=document.createElement('section');page.id='musicSwitchboard';
  page.innerHTML=`<div class="eyebrow">SIR WOODBURY MUSIC SWITCHBOARD</div><h1>Discover Artists</h1>
- <div id="swBrowse" class="panel"><label for="swGenre">Choose a genre</label><select id="swGenre"><option value="">All Genres</option><option>Country</option><option>Rock</option><option>Rap / Hip-Hop</option><option>Pop</option><option>Gospel</option><option>Blues</option><option>Comedy</option><option>Other</option></select><div id="swResults"></div></div>
+ <div id="swBrowse" class="panel"><label for="swGenre">Choose a genre</label><select id="swGenre"><option value="">— Select a genre —</option><option>Country</option><option>Rock</option><option>Rap / Hip-Hop</option><option>Pop</option><option>Gospel</option><option>Blues</option><option>Comedy</option><option>Other</option></select><div id="swResults"></div></div>
  <div id="swPlayer" class="sw-player" hidden><div class="eyebrow">NOW PLAYING</div><h2 id="swTitle"></h2><p id="swArtist"></p><div id="swAudioSlot"></div><div class="sw-actions"><button id="swPause">⏸ Pause</button><button id="swNext">⏭ Next</button><button id="swPrevious">⏮ Previous</button><button id="swClose">✕ Close</button></div><p id="swStatus" class="muted" role="status"></p></div>`;
  main.append(page);
  const E=id=>document.getElementById(id), norm=x=>String(x||'').trim().toLowerCase();
@@ -1220,10 +1221,11 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  let returnPage=null, returnScroll=0;
  const home=audio.parentElement;
  function songs(){return tracks.filter(t=>t?.url&&t?.title&&t?.artist)}
- function stop(){audio.pause();audio.removeAttribute('src');audio.load();active=false;position=-1;playlist=[];artist='';sessionStarted.clear();document.querySelector('nav')?.classList.remove('swr-player-locked');E('swPlayer').hidden=true;E('swBrowse').hidden=false;E('swGenre').value='';draw();}
+ function stop(){audio.pause();audio.removeAttribute('src');audio.load();active=false;position=-1;playlist=[];sessionStarted.clear();document.querySelector('nav')?.classList.remove('swr-player-locked');E('swPlayer').hidden=true;E('swBrowse').hidden=false;draw();}
  function enter(){if(!page.classList.contains('active'))switchTab('musicSwitchboard');}
  function draw(){
   const result=E('swResults');result.replaceChildren();
+  if(!E('swGenre').value){result.textContent='Select a genre above to browse artists.';return;}
   const filtered=songs().filter(t=>!E('swGenre').value||t.genre===E('swGenre').value);
   if(!artist){
    const names=[...new Set(filtered.map(t=>t.artist))].sort((a,b)=>a.localeCompare(b));
@@ -1273,7 +1275,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  switchTab=function(id){
   // A listening session stays inside the switchboard until Close is pressed.
   if(!E('swPlayer').hidden && id!=='musicSwitchboard')return;
-  if(id==='discover'){id='musicSwitchboard';artist='';if(E('swPlayer').hidden){E('swBrowse').hidden=false;draw()}}
+  if(id==='discover'){id='musicSwitchboard';if(E('swPlayer').hidden){E('swGenre').value='';artist='';E('swBrowse').hidden=false;draw()}}
   if(id!=='musicSwitchboard'&&page.classList.contains('active')){audio.pause();audio.removeAttribute('src');audio.load();active=false}
   oldSwitch(id);
  };
@@ -2217,72 +2219,202 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
 })();
 </script>
 <script id="swr-commercial-rotation-test">
-/* Nonbillable, per-listener radio commercial rotation. No LIVE insertion. */
+/* Test commercials: one break after every 3 completed station songs; never billable. */
 (()=>{
  'use strict';
  const radio=document.getElementById('player');
  if(!radio||!window.supabase?.createClient)return;
  const client=window.supabase.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true}});
- const commercial=new Audio();commercial.preload='none';
- let songsFinished=0,adRunning=false,rotation=0;
- const live=()=>document.documentElement.classList.contains('swr-broadcast-active')||window.demoIsLive===true;
- const radioPage=()=>document.getElementById('radio')?.classList.contains('active');
- const eligible=()=>!live()&&radioPage()&&document.documentElement.classList.contains('swr-authenticated');
+ const commercial=new Audio();
+ commercial.preload='auto';
+ let finished=0,adRunning=false,rotation=0,watchdog=null,finishing=false,resuming=false;
  const state=document.getElementById('stationState');
  const title=document.getElementById('nowTitle'),artist=document.getElementById('nowArtist');
  let oldTitle='',oldArtist='';
- async function playAd(){
-   if(!eligible())return false;
-   try{
-     const result=await client.rpc('get_active_commercials');
-     if(result.error)throw result.error;
-     const ads=(result.data||[]).filter(a=>a.audio_path);
-     if(!ads.length)return false;
-     const ad=ads[rotation++%ads.length];
-     const signed=await client.storage.from('commercial-audio').createSignedUrl(ad.audio_path,180);
-     if(signed.error)throw signed.error;
-     if(!eligible())return false;
-     adRunning=true;oldTitle=title?.textContent||'';oldArtist=artist?.textContent||'';
-     if(title)title.textContent='📢 Commercial break';
-     if(artist)artist.textContent=ad.business_name+' • test mode, not billable';
-     if(state)state.textContent='📢 COMMERCIAL • TEST MODE';
-     commercial.src=signed.data.signedUrl;
-     await commercial.play();
-     return true;
-   }catch(e){console.warn('Commercial skipped:',e);stopAd();return false;}
- }
- function stopAd(){
-   adRunning=false;commercial.pause();commercial.removeAttribute('src');
+ const eligible=()=>document.documentElement.classList.contains('swr-authenticated') &&
+   !document.documentElement.classList.contains('swr-broadcast-active') &&
+   document.getElementById('radio')?.classList.contains('active');
+ function setStatus(msg){if(state)state.textContent=msg;}
+ function restore(){
+   if(watchdog){clearTimeout(watchdog);watchdog=null;}
+   commercial.pause();commercial.removeAttribute('src');commercial.load();
+   adRunning=false;
    if(title&&oldTitle)title.textContent=oldTitle;
    if(artist&&oldArtist)artist.textContent=oldArtist;
-   if(state&&state.textContent.includes('COMMERCIAL'))state.textContent='● APPROVED MUSIC PLAYER';
+   oldTitle='';oldArtist='';
+   setStatus('● APPROVED MUSIC PLAYER');
  }
- function resume(){
+ function advance(){
    if(!eligible())return;
-   // The existing station shuffle and Top 20 bonus logic remains in charge.
-   const next=document.getElementById('nextBtn');
-   if(next)next.click();
+   resuming=true;
+   try{
+     // Use the real Auto DJ sequencer (shuffle bag, station mode, play).
+     // The hidden Next button is not the Auto DJ and can leave it paused.
+     if(typeof window.swrAutoDJPlayNext==='function'){
+       window.swrAutoDJPlayNext();
+     }else{
+       playbackMode='station';
+       document.getElementById('nextBtn')?.click();
+       radio.play().catch(err=>console.warn('Radio resume blocked:',err));
+     }
+   }finally{resuming=false;}
  }
- commercial.addEventListener('ended',()=>{stopAd();resume()});
- commercial.addEventListener('error',()=>{if(adRunning){stopAd();resume()}});
- // Capture completed station tracks before the existing auto-next listener.
- radio.addEventListener('ended',async e=>{
-   if(typeof playbackMode==='undefined'||playbackMode!=='station'||!eligible()||adRunning)return;
-   songsFinished++;
-   if(songsFinished%3!==0)return;
-   e.stopImmediatePropagation();
-   const started=await playAd();
-   if(!started)resume();
+ function finishBreak(){
+   if(finishing)return;
+   finishing=true;
+   restore();
+   advance();
+   finishing=false;
+ }
+ commercial.addEventListener('ended',finishBreak);
+ commercial.addEventListener('error',()=>{if(adRunning)finishBreak();});
+ async function breakForAd(){
+   if(!eligible())return advance();
+   setStatus('📢 Loading commercial…');
+   try{
+     const {data,error}=await client.rpc('get_active_commercials');
+     if(error)throw error;
+     const ads=(data||[]).filter(a=>a.audio_path);
+     if(!ads.length)throw Error('No active commercial');
+     const ad=ads[rotation++%ads.length];
+     const signed=await client.storage.from('commercial-audio').createSignedUrl(ad.audio_path,180);
+     if(signed.error||!signed.data?.signedUrl)throw signed.error||Error('No audio URL');
+     if(!eligible())return restore();
+     oldTitle=title?.textContent||'';oldArtist=artist?.textContent||'';
+     adRunning=true;
+     if(title)title.textContent='📢 Commercial break';
+     if(artist)artist.textContent=(ad.business_name||'Advertiser')+' • TEST • NOT BILLABLE';
+     setStatus('📢 COMMERCIAL PLAYING • TEST MODE');
+     commercial.src=signed.data.signedUrl;
+     // Recover if the MP3 stalls or the browser never sends an ended event.
+     watchdog=setTimeout(finishBreak,120000);
+     await commercial.play();
+     // Duration-based fallback, capped so a broken file cannot halt the station.
+     if(Number.isFinite(commercial.duration)&&commercial.duration>0){
+       clearTimeout(watchdog);
+       watchdog=setTimeout(finishBreak,Math.min(120000,(commercial.duration+8)*1000));
+     }
+   }catch(err){
+     console.warn('Commercial failed; returning to radio:',err);
+     finishBreak();
+   }
+ }
+ radio.addEventListener('ended',event=>{
+   if(resuming||!eligible()||adRunning||typeof playbackMode==='undefined'||playbackMode!=='station')return;
+   finished++;
+   if(finished%3!==0)return;
+   // Only interrupt the existing auto-next at the commercial boundary.
+   event.stopImmediatePropagation();
+   void breakForAd();
  },true);
- // Do not let commercials continue into LIVE or when leaving Radio.
- const observer=new MutationObserver(()=>{
-   if(adRunning&&!eligible())stopAd();
- });
+ const observer=new MutationObserver(()=>{if(adRunning&&!eligible())restore();});
  observer.observe(document.documentElement,{attributes:true,attributeFilter:['class']});
  observer.observe(document.getElementById('radio'),{attributes:true,attributeFilter:['class']});
- document.addEventListener('click',e=>{
-   if(adRunning&&(e.target.closest('nav button')||e.target.closest('#nextBtn'))){stopAd();}
+ document.addEventListener('click',event=>{
+   if(adRunning&&(event.target.closest('nav button')||event.target.closest('#nextBtn')))restore();
  },true);
 })();
 </script>
-</body></html>
+<style id="swr-genre-boxes-style">
+#futureStations .station-tile{cursor:pointer}#futureStations .station-tile:focus-visible{outline:3px solid #ff888e}#futureStations .station-tile[aria-expanded="true"]{border-color:#ff7777}#swrGenreSongs .track{flex-wrap:wrap}#swrGenreSongs button{margin-left:auto}#swrOwnerGenres .track{flex-wrap:wrap}#swrOwnerGenres select{max-width:220px}#swrOwnerGenres .track .grow{min-width:160px}
+</style>
+<script id="swr-genre-boxes-script">
+(()=>{
+ const $=id=>document.getElementById(id);
+ const genreNames=['Country','Rock','Pop','Blues','Rap / Hip-Hop','Gospel','Comedy','Other'];
+ const tiles=[...document.querySelectorAll('#futureStations .station-tile')];
+ const area=document.createElement('div');area.id='swrGenreSongs';area.className='panel';area.hidden=true;area.setAttribute('aria-live','polite');
+ $('futureStations').after(area);
+ let chosen='';
+ function drawGenre(){
+   if(!chosen){area.hidden=true;return}
+   area.hidden=false;
+   area.replaceChildren();
+   const h=document.createElement('h2');h.textContent='🎵 '+chosen+' — Approved Songs';area.append(h);
+   const inline=document.createElement('div');inline.id='swrGenreInlinePlayer';inline.hidden=true;
+   inline.innerHTML='<div class="row"><strong id="swrGenreNowTitle"></strong><button type="button" id="swrGenreExit">✕ Exit Player</button></div><audio id="swrGenreAudio" controls preload="metadata" style="width:100%"></audio>';
+   area.append(inline);
+   inline.querySelector('#swrGenreExit').onclick=()=>{switchTab('radio');const a=inline.querySelector('audio');a.pause();a.removeAttribute('src');a.load();inline.hidden=true;area.scrollIntoView({behavior:'smooth',block:'nearest'});};
+   const matching=tracks.filter(t=>(t.genre||'Other')===chosen);
+   if(!matching.length){const p=document.createElement('p');p.textContent='No approved songs in this genre yet.';area.append(p);return}
+   matching.forEach(t=>{
+     const line=document.createElement('div');line.className='track';
+     const info=document.createElement('div');info.className='grow';
+     const title=document.createElement('strong');title.textContent=t.title;
+     const artist=document.createElement('small');artist.textContent=t.artist;
+     info.append(title,artist);
+     const b=document.createElement('button');b.textContent='▶ Listen';b.type='button';b.dataset.genrePreview='1';b.onclick=(event)=>{
+       event.preventDefault();event.stopImmediatePropagation();
+       if(!document.getElementById('radio')?.classList.contains('active'))switchTab('radio');
+       // Independent genre preview: never navigate to Discover or Other Artists.
+       const holder=document.getElementById('swrGenreInlinePlayer');
+       const preview=document.getElementById('swrGenreAudio');
+       if(!holder||!preview)return;
+       document.getElementById('player')?.pause();
+       holder.hidden=false;
+       document.getElementById('swrGenreNowTitle').textContent=t.title+' — '+t.artist;
+       if(!t.url){alert('Song audio is not ready yet.');return;}
+       preview.src=t.url;
+       preview.play().catch(()=>{});
+       area.scrollIntoView({behavior:'smooth',block:'nearest'});
+     };
+     line.append(info,b);area.append(line);
+   });
+ }
+ tiles.forEach((tile,i)=>{
+   const genre=genreNames[i];tile.tabIndex=0;tile.setAttribute('role','button');tile.setAttribute('aria-expanded','false');
+   tile.querySelector('.soon')?.remove();
+   const note=document.createElement('span');note.className='soon';note.textContent='BROWSE SONGS';tile.append(note);
+   const activate=()=>{document.getElementById('swrGenreAudio')?.pause();chosen=chosen===genre?'':genre;tiles.forEach((x,j)=>x.setAttribute('aria-expanded',String(genreNames[j]===chosen)));drawGenre();if(chosen)area.scrollIntoView({behavior:'smooth',block:'nearest'})};
+   tile.addEventListener('click',activate);
+   tile.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();activate()}});
+ });
+ const intro=$('futureStations').querySelector('p.muted');if(intro)intro.textContent='Choose a genre to see its approved songs. All-genre radio rotation stays unchanged.';
+ const admin=$('admin');
+ const panel=document.createElement('div');panel.className='panel';panel.id='swrOwnerGenres';panel.hidden=true;
+ panel.innerHTML='<h2>🎼 Manage Approved Song Genres</h2><p class="muted">Owner only. Changes are saved to the station database.</p><button id="swrRefreshGenres" type="button">↻ Load Approved Songs</button><p id="swrGenreManageStatus" class="muted"></p><div id="swrGenreManageList"></div>';
+ admin.append(panel);
+ const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true}});
+ let owner=false;
+ async function verifyOwner(){
+   owner=false;panel.hidden=true;
+   if(!db)return false;
+   const {data:{user},error}=await db.auth.getUser();if(error||!user)return false;
+   const {data,error:profileError}=await db.from('profiles').select('role').eq('id',user.id).maybeSingle();
+   owner=!profileError&&data?.role==='owner';panel.hidden=!owner;return owner;
+ }
+ async function refresh(){
+   if(!await verifyOwner())return;
+   const status=$('swrGenreManageStatus'),list=$('swrGenreManageList');
+   status.textContent='Loading approved songs…';list.replaceChildren();
+   const {data,error}=await db.from('songs').select('id,title,genre,description').eq('status','approved').order('created_at',{ascending:false});
+   if(error){status.textContent='Could not load: '+error.message;return}
+   status.textContent=(data||[]).length+' approved songs.';
+   (data||[]).forEach(song=>{
+     const line=document.createElement('div');line.className='track';
+     const info=document.createElement('div');info.className='grow';
+     const title=document.createElement('strong');title.textContent=song.title;
+     const artist=document.createElement('small');artist.textContent=(song.description||'').split(' — ')[0];info.append(title,artist);
+     const sel=document.createElement('select');sel.setAttribute('aria-label','Genre for '+song.title);
+     genreNames.forEach(g=>sel.add(new Option(g,g)));sel.value=genreNames.includes(song.genre)?song.genre:'Other';
+     const save=document.createElement('button');save.textContent='Save Genre';
+     save.onclick=async()=>{
+       if(!await verifyOwner()){alert('Owner access required.');return}
+       save.disabled=true;save.textContent='Saving…';
+       const {data:updated,error:err}=await db.from('songs').update({genre:sel.value}).eq('id',song.id).eq('status','approved').select('id,genre');
+       save.disabled=false;
+       if(err||!updated?.length){save.textContent='Save Genre';status.textContent='Save failed: '+(err?.message||'No database update permission. Check owner-only Supabase RLS policy.');return}
+       song.genre=sel.value;save.textContent='✓ Saved';status.textContent=song.title+' moved to '+sel.value+'.';
+       const local=tracks.find(t=>t.id===song.id);if(local)local.genre=sel.value;
+       drawGenre();try{renderSongs()}catch(e){};
+     };
+     sel.onchange=()=>save.textContent='Save Genre';line.append(info,sel,save);list.append(line);
+   });
+ }
+ $('swrRefreshGenres').onclick=refresh;
+ document.querySelector('nav button[data-tab="admin"]').addEventListener('click',()=>setTimeout(refresh,100));
+ db?.auth.onAuthStateChange(()=>setTimeout(verifyOwner,100));
+ new MutationObserver(()=>{if(chosen)drawGenre()}).observe($('catalogStatus')||$('trackList'),{childList:true,subtree:true});
+ setTimeout(verifyOwner,500);
+})();
+</script></body></html>
