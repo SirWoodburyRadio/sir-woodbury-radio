@@ -2286,8 +2286,7 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
  const title=document.getElementById('nowTitle'),artist=document.getElementById('nowArtist');
  let oldTitle='',oldArtist='';
  const eligible=()=>document.documentElement.classList.contains('swr-authenticated') &&
-   !document.documentElement.classList.contains('swr-broadcast-active') &&
-   document.getElementById('radio')?.classList.contains('active');
+   !document.documentElement.classList.contains('swr-broadcast-active');
  function setStatus(msg){if(state)state.textContent=msg;}
  function restore(){
    if(watchdog){clearTimeout(watchdog);watchdog=null;}
@@ -2363,9 +2362,8 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
  },true);
  const observer=new MutationObserver(()=>{if(adRunning&&!eligible())restore();});
  observer.observe(document.documentElement,{attributes:true,attributeFilter:['class']});
- observer.observe(document.getElementById('radio'),{attributes:true,attributeFilter:['class']});
  document.addEventListener('click',event=>{
-   if(adRunning&&(event.target.closest('nav button')||event.target.closest('#nextBtn')))restore();
+   if(adRunning&&(event.target.closest('#nextBtn')||event.target.closest('[data-play]')))restore();
  },true);
 })();
 </script>
