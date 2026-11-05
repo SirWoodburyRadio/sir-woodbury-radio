@@ -2264,7 +2264,21 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
      const test=document.createElement('button');test.textContent='▶ Test ad';test.onclick=()=>playTest(ad);
      const activate=document.createElement('button');activate.textContent=ad.active?'⏸ Deactivate':'✅ Activate';
      activate.onclick=async()=>{if(!owner())return;const {error}=await client.from('radio_advertisers').update({active:!ad.active}).eq('id',ad.id);if(error)feedback(error.message);else{feedback('Advertiser updated.');refresh()}};
-     controls.append(test,activate);box.append(heading,details,controls);list.append(box);
+     const remove=document.createElement('button');
+     remove.textContent='Delete Ad';
+     remove.onclick=async()=>{
+       if(!owner()||!confirm('Delete the ad for "'+ad.business_name+'"?'))return;
+       controls.querySelectorAll('button').forEach(button=>button.disabled=true);
+       const {data,error}=await client.from('radio_advertisers').delete().eq('id',ad.id).select('id');
+       if(error||!data?.length){
+         feedback('Ad could not be deleted: '+(error?.message||'No delete permission or ad already removed.'));
+         controls.querySelectorAll('button').forEach(button=>button.disabled=false);
+         return;
+       }
+       feedback('Ad deleted.');
+       await refresh();
+     };
+     controls.append(test,activate,remove);box.append(heading,details,controls);list.append(box);
    });
  }
  async function playTest(ad){
@@ -2446,7 +2460,7 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
  const intro=$('futureStations').querySelector('p.muted');if(intro)intro.textContent='Choose a genre to see its approved songs. All-genre radio rotation stays unchanged.';
  const admin=$('admin');
  const panel=document.createElement('div');panel.className='panel';panel.id='swrOwnerGenres';panel.hidden=true;
- panel.innerHTML='<h2>🎼 Manage Approved Songs</h2><p class="muted">Owner only. Save genres or remove songs from public rotation. Removed audio is kept for recovery.</p><button id="swrRefreshGenres" type="button">↻ Load Approved Songs</button><p id="swrGenreManageStatus" class="muted"></p><div id="swrGenreManageList"></div>';
+ panel.innerHTML='<h2>🎼 Manage Approved Songs</h2><p class="muted">Owner only. Save genres or remove songs from public rotation. Removed audio is kept for recovery.</p><button id="swrRefreshGenres" type="button">↻ Load Approved Songs</button><p id="swrGenreManageStatus" class="muted"></p><label for="swrGenreSearch">Search by song title or artist</label><input id="swrGenreSearch" type="search" placeholder="Type to find an approved song"><select id="swrGenreMatch" aria-label="Choose a matching song" hidden></select><div id="swrGenreManageList"></div>';
  admin.append(panel);
  const db=window.supabase?.createClient('https://cfxlqceaenqhmeuocquw.supabase.co','sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw',{auth:{persistSession:true}});
  let owner=false;
@@ -2457,14 +2471,41 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
    const {data,error:profileError}=await db.from('profiles').select('role').eq('id',user.id).maybeSingle();
    owner=!profileError&&data?.role==='owner';panel.hidden=!owner;return owner;
  }
+ let approvedSongs=[];
+ const search=$('swrGenreSearch'), match=$('swrGenreMatch'), list=$('swrGenreManageList');
+ const status=$('swrGenreManageStatus');
+ const artistName=song=>(song.description||'').split(' — ')[0];
+ function findMatches(){
+   const query=search.value.trim().toLowerCase();
+   const matches=query?approvedSongs.filter(song=>[song.title,artistName(song)].some(value=>value.toLowerCase().includes(query))):[];
+   match.replaceChildren(new Option('Choose a song',''));
+   matches.slice(0,25).forEach(song=>match.add(new Option(song.title+' • '+artistName(song),song.id)));
+   match.hidden=!matches.length;
+   list.replaceChildren();
+   status.textContent=!query?'Search to find an approved song.':matches.length>25?'Showing the first 25 matches. Type more to narrow your search.':matches.length?matches.length+' matching songs.':'No matching songs.';
+ }
+ search.oninput=findMatches;
+ match.onchange=()=>{
+   list.replaceChildren();
+   const song=approvedSongs.find(song=>String(song.id)===match.value);
+   if(song)editSong(song);
+ };
  async function refresh(){
    if(!await verifyOwner())return;
-   const status=$('swrGenreManageStatus'),list=$('swrGenreManageList');
-   status.textContent='Loading approved songs…';list.replaceChildren();
-   const {data,error}=await db.from('songs').select('id,title,genre,description').eq('status','approved').order('created_at',{ascending:false});
-   if(error){status.textContent='Could not load: '+error.message;return}
-   status.textContent=(data||[]).length+' approved songs.';
-   (data||[]).forEach(song=>{
+   status.textContent='Loading approved songs…';list.replaceChildren();match.hidden=true;
+   approvedSongs=[];
+   const loadedSongs=[];
+   const pageSize=500;
+   for(let offset=0;;offset+=pageSize){
+     const {data,error}=await db.from('songs').select('id,title,genre,description').eq('status','approved').order('created_at',{ascending:false}).order('id').range(offset,offset+pageSize-1);
+     if(error){approvedSongs=[];status.textContent='Could not load: '+error.message;return;}
+     loadedSongs.push(...data);
+     if(data.length<pageSize)break;
+   }
+   approvedSongs=loadedSongs;
+   findMatches();
+ }
+ function editSong(song){
      const line=document.createElement('div');line.className='track';
      const info=document.createElement('div');info.className='grow';
      const title=document.createElement('strong');title.textContent=song.title;
@@ -2499,7 +2540,6 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
        await refresh();
      };
      sel.onchange=()=>save.textContent='Save Genre';line.append(info,sel,save,remove);list.append(line);
-   });
  }
  $('swrRefreshGenres').onclick=refresh;
  document.querySelector('nav button[data-tab="admin"]').addEventListener('click',()=>setTimeout(refresh,100));
