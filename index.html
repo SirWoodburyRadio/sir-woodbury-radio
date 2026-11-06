@@ -213,6 +213,9 @@ authBox.innerHTML=`
 <p class="muted">Already a member? Sign in with your email and password. New here? Enter your email and choose a password, then select Create Account.</p>
 <label for="realEmail">Email</label><input id="realEmail" type="email" autocomplete="email" placeholder="you@example.com">
 <label for="realPassword">Password</label><input id="realPassword" type="password" autocomplete="current-password" placeholder="Your password">
+<div id="realAccountTypeBox"><label for="realAccountType">For a new account, choose how you want to join</label><select id="realAccountType"><option value="listener">Listener — listen, discover, and vote</option><option value="artist">Artist — submit music and listen</option></select></div>
+<button id="realBecomeArtist" type="button" hidden>Become an Artist</button>
+<p id="realArtistStatus" class="muted" role="status"></p>
 <div class="auth-actions">
 <button class="primary" id="realSignIn" type="button">Sign In</button>
 <button id="realSignUp" type="button">Create Account</button>
@@ -238,6 +241,8 @@ try {
 async function showSession(session){
   if(!client)return;
   const user=session?.user;
+  el('realAccountTypeBox').hidden=!!user;
+  el('realBecomeArtist').hidden=true;
   swrApplyAuth(user);
   el('realSignIn').hidden=!!user;el('realSignUp').hidden=!!user;el('realSignOut').hidden=!user;
   el('realEmail').disabled=!!user;el('realPassword').disabled=!!user;
@@ -245,12 +250,37 @@ async function showSession(session){
   try{
     const {data,error}=await client.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();
     if(error)throw error;
-    const role=data?.role||'profile not assigned';
+    let role=data?.role||'profile not assigned';
+    if(role==='listener'&&user.user_metadata?.station_signup_role==='artist'){
+      const result=await client.rpc('swr_become_artist');
+      if(result.error){
+        el('realArtistStatus').textContent='Artist setup could not finish. Try Become an Artist, or contact the station.';
+      }else{
+        role=result.data;
+        el('realArtistStatus').textContent='Your artist account is ready. Open Submit Music to send a song for review.';
+      }
+    }
+    el('realBecomeArtist').hidden=role!=='listener';
     say('✓ Signed in as '+user.email+'\nRole: '+role+(data?.role==='admin'?' • Admin enabled: '+!!data.admin_enabled:'')+
       '\nThis login is real. Song submissions and owner review are connected to Supabase.');
   }catch(e){say('✓ Signed in as '+user.email+'\nCould not read profile: '+e.message);}
 }
 if(client){
+  el('realBecomeArtist').onclick=async()=>{
+    const button=el('realBecomeArtist'),status=el('realArtistStatus');
+    button.disabled=true;
+    status.textContent='Setting up your artist account…';
+    try{
+      const {error}=await client.rpc('swr_become_artist');
+      if(error)throw error;
+      const {data,error:sessionError}=await client.auth.getSession();
+      if(sessionError)throw sessionError;
+      await showSession(data.session);
+      status.textContent='Your artist account is ready. Open Submit Music to send a song for review.';
+    }catch(error){
+      status.textContent='Could not set up your artist account: '+error.message;
+    }finally{button.disabled=false;}
+  };
   el('realSignIn').onclick=async()=>{
     const email=el('realEmail').value.trim(),password=el('realPassword').value;
     if(!email||!password){say('Enter your email and password.');return;}
@@ -266,7 +296,7 @@ if(client){
     const email=el('realEmail').value.trim(),password=el('realPassword').value;
     if(!email||password.length<6){say('Enter an email and password of at least 6 characters.');return;}
     say('Creating account…');
-    const {data,error}=await client.auth.signUp({email,password});
+    const {data,error}=await client.auth.signUp({email,password,options:{emailRedirectTo:'https://sirwoodburyradio.github.io/sir-woodbury-radio/',data:{station_signup_role:el('realAccountType').value==='artist'?'artist':'listener'}}});
     if(error){say('Sign-up failed: '+error.message);return;}
     el('realPassword').value='';
     say(data.session?'Account created and signed in.':'Account created. Check your email for a confirmation link, then sign in.');
