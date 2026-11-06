@@ -213,8 +213,9 @@ authBox.innerHTML=`
 <p class="muted">Already a member? Sign in with your email and password. New here? Enter your email and choose a password, then select Create Account.</p>
 <label for="realEmail">Email</label><input id="realEmail" type="email" autocomplete="email" placeholder="you@example.com">
 <label for="realPassword">Password</label><input id="realPassword" type="password" autocomplete="current-password" placeholder="Your password">
-<div id="realAccountTypeBox"><label for="realAccountType">For a new account, choose how you want to join</label><select id="realAccountType"><option value="listener">Listener — listen, discover, and vote</option><option value="artist">Artist — submit music and listen</option></select></div>
-<button id="realBecomeArtist" type="button" hidden>Become an Artist</button>
+<div id="realAccountTypeBox"><label for="realAccountType">For a new account, choose how you want to join</label><select id="realAccountType"><option value="listener">Listener — listen, discover, and vote</option><option value="artist">Artist — request approval to submit music</option></select></div>
+<div id="realArtistRequestFields" hidden><label for="realArtistName">Artist / stage name</label><input id="realArtistName" maxlength="100" placeholder="Your artist name"></div>
+<button id="realBecomeArtist" type="button" hidden>Request Artist Access</button>
 <p id="realArtistStatus" class="muted" role="status"></p>
 <div class="auth-actions">
 <button class="primary" id="realSignIn" type="button">Sign In</button>
@@ -243,6 +244,8 @@ async function showSession(session){
   const user=session?.user;
   el('realAccountTypeBox').hidden=!!user;
   el('realBecomeArtist').hidden=true;
+  el('realArtistRequestFields').hidden=true;
+  el('realArtistStatus').textContent='';
   swrApplyAuth(user);
   el('realSignIn').hidden=!!user;el('realSignUp').hidden=!!user;el('realSignOut').hidden=!user;
   el('realEmail').disabled=!!user;el('realPassword').disabled=!!user;
@@ -251,16 +254,21 @@ async function showSession(session){
     const {data,error}=await client.from('profiles').select('role,admin_enabled').eq('id',user.id).maybeSingle();
     if(error)throw error;
     let role=data?.role||'profile not assigned';
-    if(role==='listener'&&user.user_metadata?.station_signup_role==='artist'){
-      const result=await client.rpc('swr_become_artist');
+    if(role==='listener'){
+      const result=await client.rpc('swr_artist_request');
       if(result.error){
-        el('realArtistStatus').textContent='Artist setup could not finish. Try Become an Artist, or contact the station.';
+        el('realArtistStatus').textContent='Artist requests unavailable: '+result.error.message;
       }else{
-        role=result.data;
-        el('realArtistStatus').textContent='Your artist account is ready. Open Submit Music to send a song for review.';
+        const request=result.data;
+        const canRequest=!request.status;
+        el('realBecomeArtist').hidden=!canRequest;
+        el('realArtistRequestFields').hidden=!canRequest;
+        if(request.status==='pending')el('realArtistStatus').textContent='Waiting for station approval.';
+        if(request.status==='declined')el('realArtistStatus').textContent='Your artist request was declined. Contact the station to discuss it.';
+        if(canRequest&&user.user_metadata?.station_signup_role==='artist')
+          el('realArtistStatus').textContent='Enter your artist name and request station approval below.';
       }
     }
-    el('realBecomeArtist').hidden=role!=='listener';
     say('✓ Signed in as '+user.email+'\nRole: '+role+(data?.role==='admin'?' • Admin enabled: '+!!data.admin_enabled:'')+
       '\nThis login is real. Song submissions and owner review are connected to Supabase.');
   }catch(e){say('✓ Signed in as '+user.email+'\nCould not read profile: '+e.message);}
@@ -269,18 +277,61 @@ if(client){
   el('realBecomeArtist').onclick=async()=>{
     const button=el('realBecomeArtist'),status=el('realArtistStatus');
     button.disabled=true;
-    status.textContent='Setting up your artist account…';
+    status.textContent='Sending your artist request…';
     try{
-      const {error}=await client.rpc('swr_become_artist');
+      const name=el('realArtistName').value.trim();
+      if(!name)throw Error('Enter your artist name.');
+      const {error}=await client.rpc('swr_artist_request',{artist_name_input:name});
       if(error)throw error;
       const {data,error:sessionError}=await client.auth.getSession();
       if(sessionError)throw sessionError;
       await showSession(data.session);
-      status.textContent='Your artist account is ready. Open Submit Music to send a song for review.';
     }catch(error){
-      status.textContent='Could not set up your artist account: '+error.message;
+      status.textContent='Could not send request: '+error.message;
     }finally{button.disabled=false;}
   };
+  const artistQueue=document.createElement('div');
+  artistQueue.className='panel';
+  artistQueue.hidden=true;
+  artistQueue.innerHTML='<h2>Artist Access Requests</h2><button id="realArtistQueueRefresh" type="button">Refresh Requests</button><p id="realArtistQueueStatus" role="status"></p><div id="realArtistQueueList"></div>';
+  document.getElementById('admin')?.prepend(artistQueue);
+  async function refreshArtistQueue(){
+    artistQueue.hidden=true;
+    const {data:authData}=await client.auth.getUser();
+    if(!authData?.user)return;
+    const {data:profile}=await client.from('profiles').select('role').eq('id',authData.user.id).maybeSingle();
+    if(profile?.role!=='owner')return;
+    artistQueue.hidden=false;
+    const status=el('realArtistQueueStatus'),list=el('realArtistQueueList');
+    list.replaceChildren();
+    const {data,error}=await client.rpc('swr_pending_artist_requests');
+    if(error){status.textContent='Could not load requests: '+error.message;return;}
+    status.textContent=data.length?data.length+' pending requests.':'No pending artist requests.';
+    data.forEach(request=>{
+      const row=document.createElement('div');row.className='track';
+      const info=document.createElement('div');info.className='grow';
+      const name=document.createElement('strong');name.textContent=request.artist_name;
+      const email=document.createElement('small');email.textContent=request.email;
+      info.append(name,email);row.append(info);
+      for(const approved of [true,false]){
+        const button=document.createElement('button');
+        button.textContent=approved?'Approve Artist':'Decline';
+        button.onclick=async()=>{
+          if(!confirm((approved?'Approve artist access for ':'Decline artist access for ')+request.artist_name+'?'))return;
+          row.querySelectorAll('button').forEach(b=>b.disabled=true);
+          const {error}=await client.rpc('swr_review_artist_request',{request_user_id:request.user_id,approve:approved});
+          if(error){status.textContent=error.message;row.querySelectorAll('button').forEach(b=>b.disabled=false);return;}
+          await refreshArtistQueue();
+        };
+        row.append(button);
+      }
+      list.append(row);
+    });
+  }
+  el('realArtistQueueRefresh').onclick=refreshArtistQueue;
+  document.querySelector('nav button[data-tab="admin"]')?.addEventListener('click',refreshArtistQueue);
+  client.auth.onAuthStateChange(()=>setTimeout(refreshArtistQueue,0));
+  refreshArtistQueue();
   el('realSignIn').onclick=async()=>{
     const email=el('realEmail').value.trim(),password=el('realPassword').value;
     if(!email||!password){say('Enter your email and password.');return;}
