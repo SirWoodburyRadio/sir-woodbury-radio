@@ -482,6 +482,15 @@ if(fav)fav.insertAdjacentHTML('beforebegin','<p class="muted">Favorites and Top 
     if(signError||!signed?.signedUrl){console.warn('Audio unavailable for',song.title,signError?.message);continue;}
     fresh.push({id:song.id,title:song.title,artist:(song.description||'').split(' — ')[0]||'Independent Artist',genre:song.genre||'Other',url:signed.signedUrl});
    }
+   // LOCAL R2 ROTATION TEST ONLY: one new track, never written to Supabase.
+   // This track uses the same player and automatic rotation as approved songs.
+   const r2TestTrack={
+     id:'r2-test-christmas-around-world-2026',
+     title:'Christmas Around the World (Remastered) [R2 ROTATION TEST]',
+     artist:'Sir Woodbury',genre:'Holiday',in_rotation:true,
+     url:'https://pub-82322f7a373846a780e139b65b50da8a.r2.dev/Christmas%20Around%20the%20World%20(Remastered).mp3'
+   };
+   if(!fresh.some(t=>t.id===r2TestTrack.id))fresh.unshift(r2TestTrack);
    const current=tracks[index]?.id;
    const wasPlaying=!player.paused && !!player.getAttribute('src');
    tracks.splice(0,tracks.length,...fresh);
@@ -1064,8 +1073,14 @@ updatePlaybackUI();
    bag=result;
  }
  
+ let r2FirstPlayPending=true;
  function choose(){
    const eligible=rebuild();if(!eligible.length)return -1;
+   // Make the R2 test song the first normal radio track once per page load.
+   if(r2FirstPlayPending){
+     const r2=eligible.find(x=>x.t.id==='r2-test-christmas-around-world-2026');
+     if(r2){r2FirstPlayPending=false;lastArtist=String(r2.t.artist||'').toLowerCase();return r2.i;}
+   }
    if(!bag.length)fillBag(eligible);
    // Keep the existing Top 20 bonus-play concept, but never let a bonus
    // interrupt the first fresh shuffled cycle after sign-in.
@@ -1107,7 +1122,7 @@ updatePlaybackUI();
  // New catalog becomes available asynchronously after Supabase returns.
  new MutationObserver(()=>{if(tracks.length)tryStart()}).observe(status,{childList:true,subtree:true});
  // The station advances automatically without a Play button.
- audio.addEventListener('ended',()=>{if(playbackMode==='station')playNext()});
+ audio.addEventListener('ended',()=>{if(playbackMode==='station' && !window.swrCommercialOnSongEnd?.())playNext()});
  // Private previews never play over another song.
  document.addEventListener('play',event=>{
    if(event.target.tagName!=='AUDIO'||event.target===audio)return;
@@ -1245,7 +1260,7 @@ updatePlaybackUI();
  document.querySelector('[data-tab="live"]').addEventListener('click',()=>{refresh().then(listSongs)});
  if(db)db.auth.onAuthStateChange(()=>setTimeout(()=>refresh().then(listSongs),150));
  setInterval(()=>{if(staff&&page.classList.contains('active'))listSongs();},10000);
- setInterval(()=>{if(page.classList.contains('active')||E('radio').classList.contains('active'))refresh()},2000);
+ setInterval(()=>{if(page.classList.contains('active')&&!document.hidden)refresh()},3000);
  refresh();
 })();
 </script>
@@ -1480,7 +1495,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   checking=false;
  }
  new MutationObserver(()=>{if(!panel.hidden)updateMonitors()}).observe(panel,{attributes:true,attributeFilter:['hidden']});
- setInterval(updateMonitors,2000);
+ setInterval(()=>{if(!document.hidden&&document.getElementById('live')?.classList.contains('active'))updateMonitors()},3000);
  for(const id of ['swrOpen','swrClose','swrNextSong','liveOpenVote','liveCloseVote','liveStageSong']){
   E(id)?.addEventListener('click',()=>setTimeout(updateMonitors,700));
  }
@@ -1893,7 +1908,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   finally{button.disabled=false;}
  });
  window.addEventListener('swr-chat-reset',()=>{joinedAt=new Date().toISOString();wasLive=document.documentElement.classList.contains('swr-broadcast-active');lastFingerprint='';messages.replaceChildren();refresh();});
- setInterval(refresh,3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});refresh();
+ setInterval(()=>{if(!document.hidden&&document.getElementById('live')?.classList.contains('active'))refresh()},3000);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&document.getElementById('live')?.classList.contains('active'))refresh();});refresh();
 })();
 </script>
 <script id="swr-battle-mode-v1">
@@ -1982,7 +1997,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  };
  db?.auth.onAuthStateChange(()=>{firstLoad=true;setTimeout(refresh,100);});
  // Polling means all connected viewers update without page reload; no extra realtime configuration needed.
- setInterval(refresh,1800);setTimeout(refresh,500);
+ setInterval(()=>{if(!document.hidden&&el('live')?.classList.contains('active'))refresh()},3000);setTimeout(refresh,500);
 })();
 </script>
 <style id="swr-owner-console-style">
@@ -2109,9 +2124,9 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    if(viewer)viewer.hidden=!(m.data===true)||!!battleState?.enabled;
   }catch(e){console.warn('Review mode status:',e);}
  }
- setInterval(refreshListenerReview,2000);setTimeout(refreshListenerReview,350);
+ setInterval(()=>{if(!document.hidden&&E('live')?.classList.contains('active'))refreshListenerReview()},3000);setTimeout(refreshListenerReview,350);
  // Battle commands are async, so the next poll verifies the server-confirmed state.
- setInterval(refresh,2000);
+ setInterval(()=>{if(!document.hidden&&E('live')?.classList.contains('active'))refresh()},3000);
  db?.auth.onAuthStateChange(()=>setTimeout(refresh,400));
  setTimeout(refresh,800);
 })();
@@ -2442,10 +2457,19 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
    if(!eligible())return advance();
    setStatus('📢 Loading commercial…');
    try{
-     const {data,error}=await client.rpc('get_active_commercials');
-     if(error)throw error;
-     const ads=(data||[]).filter(a=>a.audio_path);
-     if(!ads.length)throw Error('No active commercial');
+     // Read the same advertiser records used by the working owner Test ad button.
+     // The optional public RPC may not be installed on this Supabase project.
+     let ads=[];
+     const rpc=await client.rpc('get_active_commercials');
+     if(!rpc.error)ads=(rpc.data||[]).filter(a=>a.audio_path && a.active!==false);
+     if(!ads.length){
+       const direct=await client.from('radio_advertisers')
+         .select('id,business_name,audio_path,active,purchased_spots')
+         .eq('active',true);
+       if(direct.error)throw Error('Ad lookup: '+direct.error.message+(rpc.error?' (RPC: '+rpc.error.message+')':''));
+       ads=(direct.data||[]).filter(a=>a.audio_path);
+     }
+     if(!ads.length)throw Error('No readable active commercial');
      const ad=ads[rotation++%ads.length];
      const signed=await client.storage.from('commercial-audio').createSignedUrl(ad.audio_path,180);
      if(signed.error||!signed.data?.signedUrl)throw signed.error||Error('No audio URL');
@@ -2467,16 +2491,19 @@ html.swr-authenticated.swr-is-owner:has(#live.active) #swrAdManagerBtn{display:b
    }catch(err){
      console.warn('Commercial failed; returning to radio:',err);
      finishBreak();
+     setStatus('⚠ Commercial skipped: '+(err?.message||String(err)));
+     setTimeout(()=>{if(!adRunning&&state?.textContent?.startsWith('⚠ Commercial skipped:'))setStatus('● APPROVED MUSIC PLAYER');},15000);
    }
  }
- radio.addEventListener('ended',event=>{
-   if(resuming||!eligible()||adRunning||typeof playbackMode==='undefined'||playbackMode!=='station')return;
+ // The Auto DJ sequencer calls this before advancing, so an ad break can
+ // replace the next-song transition without competing 'ended' listeners.
+ window.swrCommercialOnSongEnd=()=>{
+   if(resuming||!eligible()||adRunning)return false;
    finished++;
-   if(finished%3!==0)return;
-   // Only interrupt the existing auto-next at the commercial boundary.
-   event.stopImmediatePropagation();
+   if(finished%3!==0)return false;
    void breakForAd();
- },true);
+   return true;
+ };
  const observer=new MutationObserver(()=>{if(adRunning&&!eligible())restore();});
  observer.observe(document.documentElement,{attributes:true,attributeFilter:['class']});
  document.addEventListener('click',event=>{
