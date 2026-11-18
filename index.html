@@ -482,15 +482,6 @@ if(fav)fav.insertAdjacentHTML('beforebegin','<p class="muted">Favorites and Top 
     if(signError||!signed?.signedUrl){console.warn('Audio unavailable for',song.title,signError?.message);continue;}
     fresh.push({id:song.id,title:song.title,artist:(song.description||'').split(' — ')[0]||'Independent Artist',genre:song.genre||'Other',url:signed.signedUrl});
    }
-   // LOCAL R2 ROTATION TEST ONLY: one new track, never written to Supabase.
-   // This track uses the same player and automatic rotation as approved songs.
-   const r2TestTrack={
-     id:'r2-test-christmas-around-world-2026',
-     title:'Christmas Around the World (Remastered) [R2 ROTATION TEST]',
-     artist:'Sir Woodbury',genre:'Holiday',in_rotation:true,
-     url:'https://pub-82322f7a373846a780e139b65b50da8a.r2.dev/Christmas%20Around%20the%20World%20(Remastered).mp3'
-   };
-   if(!fresh.some(t=>t.id===r2TestTrack.id))fresh.unshift(r2TestTrack);
    const current=tracks[index]?.id;
    const wasPlaying=!player.paused && !!player.getAttribute('src');
    tracks.splice(0,tracks.length,...fresh);
@@ -505,9 +496,8 @@ if(fav)fav.insertAdjacentHTML('beforebegin','<p class="muted">Favorites and Top 
    if(data?.length&&!fresh.length)message.textContent='Approved songs found, but audio access is unavailable. Storage playback permissions may need checking.';
   }catch(e){message.textContent='Could not load approved songs: '+e.message;}
  }
- document.querySelector('[data-tab="discover"]').addEventListener('click',refreshCatalog);
- document.querySelector('[data-tab="radio"]').addEventListener('click',refreshCatalog);
- document.querySelector('[data-tab="charts"]').addEventListener('click',refreshCatalog);
+ // Keep the currently playing song uninterrupted while navigating tabs.
+ // Catalog loads on startup; tab changes only render existing in-memory songs.
  setTimeout(refreshCatalog,700);
 })();
 
@@ -1073,14 +1063,8 @@ updatePlaybackUI();
    bag=result;
  }
  
- let r2FirstPlayPending=true;
  function choose(){
    const eligible=rebuild();if(!eligible.length)return -1;
-   // Make the R2 test song the first normal radio track once per page load.
-   if(r2FirstPlayPending){
-     const r2=eligible.find(x=>x.t.id==='r2-test-christmas-around-world-2026');
-     if(r2){r2FirstPlayPending=false;lastArtist=String(r2.t.artist||'').toLowerCase();return r2.i;}
-   }
    if(!bag.length)fillBag(eligible);
    // Keep the existing Top 20 bonus-play concept, but never let a bonus
    // interrupt the first fresh shuffled cycle after sign-in.
@@ -1129,29 +1113,12 @@ updatePlaybackUI();
    audio.pause();
    document.querySelectorAll('audio').forEach(other=>{if(other!==event.target)other.pause()});
  },true);
-  // On navigation, stop the radio; on return, resume the rotation.
+  // Keep the station playing continuously when navigating within the app.
+ // Explicitly starting a song preview still pauses station audio via the
+ // existing audio play handler. Navigation alone must never retune or skip.
  const previousSwitch=switchTab;
  switchTab=function(id){
-   const quietSections=new Set(['discover','artistListeningPage','voteArtistsPage','charts','submit','admin','live']);
-   const previousTab=document.querySelector('main section.active')?.id;
-   const wasQuiet=quietSections.has(previousTab);
-   const goingQuiet=quietSections.has(id);
    previousSwitch(id);
-   if(goingQuiet){
-     // Make room for song previews; no station audio in listening/voting/upload/review.
-     if(playbackMode==='station' && !audio.paused)audio.pause();
-     if(!wasQuiet && playbackMode==='on-demand')audio.pause();
-     // Stop previews when navigating to a different listening section.
-     if(wasQuiet && id!==previousTab && playbackMode==='on-demand')audio.pause();
-   }else if(id==='radio'||id==='home'){
-     // Returning to radio or Main always tunes into rotation, not a paused on-demand song.
-     if(playbackMode!=='station'||index<0||!audio.getAttribute('src'))playNext();
-     else if(audio.paused)audio.play().catch(()=>{});
-   }else if(wasQuiet && playbackMode==='on-demand'){
-     audio.pause();
-     // Normal tabs (Account / My Studio) resume the station.
-     playNext();
-   }
    if(typeof updatePlaybackUI==='function')updatePlaybackUI();
  };
  // A real sign-in tap is a permitted user gesture, but asynchronous audio loading
@@ -1409,7 +1376,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   // A listening session stays inside the switchboard until Close is pressed.
   if(!E('swPlayer').hidden && id!=='musicSwitchboard')return;
   if(id==='discover'){id='musicSwitchboard';if(E('swPlayer').hidden){E('swGenre').value='';artist='';E('swBrowse').hidden=false;draw()}}
-  if(id!=='musicSwitchboard'&&page.classList.contains('active')){audio.pause();audio.removeAttribute('src');audio.load();active=false}
+  if(id!=='musicSwitchboard'&&page.classList.contains('active')&&active&&playbackMode==='on-demand'){audio.pause();audio.removeAttribute('src');audio.load();active=false}
   oldSwitch(id);
  };
  // Capture navigation before legacy handlers can change the visible section.
