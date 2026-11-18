@@ -1561,6 +1561,28 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
  const BASE='https://cfxlqceaenqhmeuocquw.supabase.co', KEY='sb_publishable_mFDz3l0ZHzTBX-dZ4JSrSg_qh6RIStw';
  const db=window.supabase?.createClient(BASE,KEY,{auth:{persistSession:true,autoRefreshToken:true}});
  let room=null, host=false, busy=false, autoListener=false, broadcastDetected=false, manuallyLeft=false, listenerConnectedAt=0, lastReconnectAt=0;
+ // LIVE track metadata travels over the existing LiveKit connection, never the regular radio.
+ let swrLiveTrack={title:'',artist:'',state:'idle'};
+ const swrLiveEncoder=new TextEncoder(),swrLiveDecoder=new TextDecoder();
+ function swrShowLiveTrack(){
+   const heading=document.getElementById('swrViewerNowPlaying');if(!heading)return;
+   let display=document.getElementById('swrLiveTrackDetails');
+   if(!display){display=document.createElement('div');display.id='swrLiveTrackDetails';display.style.cssText='margin:12px 0 16px;padding:17px;border:1px solid #7d343e;border-radius:13px;background:#17141a;text-align:center;overflow-wrap:anywhere';heading.after(display);}
+   display.replaceChildren();
+   const title=document.createElement('div');title.style.cssText='font-size:clamp(19px,4vw,29px);font-weight:850;color:white';
+   title.textContent=swrLiveTrack.title||'Sir Woodbury LIVE';
+   const artist=document.createElement('div');artist.style.cssText='margin-top:7px;color:#dfc8d0;font-size:15px';
+   artist.textContent=swrLiveTrack.title?(swrLiveTrack.artist||'Independent Artist'):(swrLiveTrack.state==='ended'?'Broadcast ended':'Live DJ broadcast');
+   display.append(title,artist);
+ }
+ function swrSetLiveTrack(title='',artist='',state='playing'){
+   swrLiveTrack={title:String(title||''),artist:String(artist||''),state};swrShowLiveTrack();
+   if(host&&room?.localParticipant){try{room.localParticipant.publishData(swrLiveEncoder.encode(JSON.stringify({type:'swr-live-track-v1',...swrLiveTrack})),{reliable:true}).catch(e=>console.warn('LIVE song metadata:',e));}catch(e){console.warn('LIVE song metadata:',e);}}
+ }
+ setInterval(()=>{if(host&&room&&swrLiveTrack.state==='playing')swrSetLiveTrack(swrLiveTrack.title,swrLiveTrack.artist,'playing');},8000);
+ const swrDetailsWatch=new MutationObserver(()=>{if(document.getElementById('swrViewerNowPlaying')){swrShowLiveTrack();swrDetailsWatch.disconnect();}});
+ swrDetailsWatch.observe(document.body,{childList:true,subtree:true});
+
  const ownerOnlyIds=['liveOwnerIntro','liveDJPanel'];
  // Let listeners browse the station during LIVE and return using the LIVE tab.
  // Automatic entry still happens once when the broadcast begins.
@@ -1648,6 +1670,11 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
    const token=body.token||body.accessToken;const url=body.url||body.serverUrl||body.wsUrl;
    if(!token||!url)throw Error('Token function must return token and LiveKit server url.');
    const r=new window.LivekitClient.Room({adaptiveStream:true,dynacast:true});
+   r.on(window.LivekitClient.RoomEvent.DataReceived,(payload,participant)=>{
+     if(asHost||!participant)return;
+     try{const msg=JSON.parse(swrLiveDecoder.decode(payload));if(msg.type==='swr-live-track-v1')swrSetLiveTrack(msg.title,msg.artist,msg.state);}catch(e){}
+   });
+
    r.on(window.LivekitClient.RoomEvent.TrackSubscribed,track=>{if(track.kind==='video'){const v=track.attach();v.autoplay=true;v.playsInline=true;v.muted=true;v.style.cssText='width:100%;max-height:65vh;object-fit:contain;background:#000';$('swrAudienceVideo').replaceChildren(v);}});
    r.on(window.LivekitClient.RoomEvent.TrackSubscribed,(track)=>{if(track.kind==='audio'){const audio=track.attach();audio.autoplay=true;audio.controls=false;audio.muted=listenerMuted;$('swrRemoteAudio').append(audio);onBroadcastStarted();enableSound();}});
    r.on(window.LivekitClient.RoomEvent.TrackUnsubscribed,track=>{track.detach().forEach(el=>el.remove());setTimeout(checkLivePresence,300);});
@@ -1754,7 +1781,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
   }
   async function stopLiveMusic(){
     musicAudio.pause();musicAudio.removeAttribute('src');musicAudio.load();
-    musicStatus.textContent='Song stopped. Microphone remains live.';
+    musicStatus.textContent='Song stopped. Microphone remains live.';swrSetLiveTrack('','','idle');
   }
   async function playLiveMusic(){
     try{
@@ -1770,7 +1797,8 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
       if(signError||!signed?.signedUrl)throw Error(signError?.message||'Audio unavailable.');
       musicAudio.src=signed.signedUrl;
       await musicAudio.play();
-      musicStatus.textContent='🔴 Broadcasting: '+t.artist+' — '+t.title;
+      swrSetLiveTrack(t.title,t.artist||t.artist_name||t.description||'Independent Artist');
+      musicStatus.textContent='🔴 Broadcasting: '+(t.artist||t.artist_name||t.description||'Independent Artist')+' — '+t.title;
     }catch(e){musicStatus.textContent='Music error: '+e.message;}
   }
   for(const [sliderId,outputId,gainKey] of [['swrMicLevel','swrMicValue','mic'],['swrMusicLevel','swrMusicValue','music']]){
@@ -1793,7 +1821,7 @@ nav.swr-player-locked button{opacity:.42!important;cursor:not-allowed!important;
     if(signError||!signed?.signedUrl)throw Error(signError?.message||'Cannot access pending audio.');
     if(!musicSource){musicSource=mixContext.createMediaElementSource(musicAudio);musicSource.connect(musicGain);}
     await mixContext.resume();musicAudio.pause();musicAudio.src=signed.signedUrl;
-    await musicAudio.play();musicStatus.textContent='🔴 LIVE REVIEW — '+song.title+' (not in rotation)';
+    await musicAudio.play();swrSetLiveTrack(song.title,song.artist||song.artist_name||song.description||'Independent Artist');musicStatus.textContent='🔴 LIVE REVIEW — '+song.title+' (not in rotation)';
   };
   window.swrStopReviewLive=()=>stopLiveMusic();
   $('swrLiveMusicRefresh').onclick=loadApprovedMusic;
